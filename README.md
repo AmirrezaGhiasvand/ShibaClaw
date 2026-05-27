@@ -17,13 +17,14 @@
 ---
 
 
-📢 **Welcome to ShibaClaw v0.4.7!**
+📢 **Welcome to ShibaClaw v0.4.8!**
 This release brings:
+- **Code Block Copy Fix** — Fixed an issue where the "Copy" button inside code blocks would silently fail on non-HTTPS environments by adding a robust fallback clipboard mechanism.
+- **Message Copy Feature** — Added a new "Copy Message" button next to the timestamp on every message bubble to easily copy the raw text content of an entire message.
+- **Thought Blocks UI Settings** — Added options to hide or collapse by default the agent's reasoning `<think>` blocks in the WebUI.
+- **Update Manifest Fixes** — Resolved issues where updates were not correctly recognized by Python package managers.
 - **Mobile WebUI Improvements** — Added a mobile-only setting to make Enter insert a newline on mobile devices, improved mobile chat bubble width, and made message tables horizontally scrollable.
-- **Security Hardening** — Resolved a critical "Asterisk Merge" vulnerability in the configuration router to prevent corruption of stored API keys.
-- **API Surface Documentation** — Completely overhauled `API_REFERENCE.md` to document missing REST endpoints and modernize the WebSocket protocol schema.
-- **Native Windows Toast Notifications** — Integrated OS-level notifications for the packaged executable using `pystray` when the desktop app is minimized or hidden.
-- **Deduplicated Agent Notifications** — Removed redundant server-side notifications, relying exclusively on frontend focus-checking state logic to prevent multiple alerts.
+
 See the [Changelog](./CHANGELOG.md) for details.
 
 ---

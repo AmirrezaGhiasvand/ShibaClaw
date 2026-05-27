@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.8] - 2026-05-27
+
+### Fixed
+- **Code Block Copy Fix** — Fixed an issue where the "Copy" button inside code blocks would silently fail on non-HTTPS environments by adding a robust fallback clipboard mechanism. (Issue #40)
+- **Message Copy Feature** — Added a new "Copy Message" button next to the timestamp on every message bubble to easily copy the raw text content of an entire message. (Issue #40)
+- **Update Manifest Synchronization** — Fixed a bug where `pyproject.toml` and inner `update_manifest.json` versions were out of sync, preventing pip from recognizing updates. (Issue #41)
+- **Thought Blocks UI** — Added UI settings to completely hide or collapse by default the agent's reasoning blocks (`<think>`) in the WebUI. (Issue #39)
+
 ## [0.4.7] - 2026-05-26
 
 ### Added

@@ -24,6 +24,7 @@ function addUserMessage(content, attachments = []) {
     bubble.className = "message-bubble";
     
     if (content) {
+        bubble.setAttribute("data-raw-content", content);
         bubble.innerHTML = renderMarkdown(content);
         enhanceCodeBlocks(bubble);
     }
@@ -56,6 +57,7 @@ function addAgentMessage(id, content, attachments = []) {
     const bubble = document.createElement("div");
     bubble.className = "message-bubble";
 
+    bubble.setAttribute("data-raw-content", content);
     bubble.innerHTML = renderMarkdown(content);
     enhanceCodeBlocks(bubble);
 
@@ -279,11 +281,23 @@ function createMessageGroup(type, targetContainer = chatHistory) {
 function addTimestamp(group, dateStr) {
     const time = document.createElement("div");
     time.className = "message-time";
+    
     const d = dateStr ? new Date(dateStr) : new Date();
-    time.textContent = d.toLocaleTimeString([], {
+    const timeText = document.createElement("span");
+    timeText.textContent = d.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
     });
+    time.appendChild(timeText);
+    
+    // Add copy button
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "btn-copy-msg";
+    copyBtn.innerHTML = `<span class="material-icons-round" style="font-size:12px">content_copy</span>`;
+    copyBtn.onclick = function() { window.copyMessage(this); };
+    copyBtn.title = "Copy message";
+    time.appendChild(copyBtn);
+    
     group.querySelector(".message-content").appendChild(time);
 }
 
@@ -291,6 +305,10 @@ function addTimestamp(group, dateStr) {
 // ── Markdown Rendering ────────────────────────────────────────
 function renderMarkdown(text) {
     if (!text) return "";
+    
+    const hideThoughts = localStorage.getItem("shibaclaw_hide_thoughts") === "true";
+    const collapseThoughts = localStorage.getItem("shibaclaw_collapse_thoughts") === "true";
+    const detailsAttr = collapseThoughts ? "" : " open";
     
     let content = text;
 
@@ -329,20 +347,22 @@ function renderMarkdown(text) {
             });
             
             processedContent = processedContent.replace(/<think>([\s\S]*?)<\/think>/gi, (match, p1) => {
+                if (hideThoughts) return "";
                 let restoredP1 = p1;
                 restoredP1 = restoredP1.replace(/__INLINE_CODE_PLACEHOLDER_(\d+)__/g, (m, idx) => inlineCodes[parseInt(idx, 10)]);
                 restoredP1 = restoredP1.replace(/__CODE_BLOCK_PLACEHOLDER_(\d+)__/g, (m, idx) => codeBlocks[parseInt(idx, 10)]);
                 const innerParsed = marked.parse(restoredP1.trim());
-                return `<details class="thought-block" open><summary><span class="material-icons-round" style="font-size:14px">psychology</span>Ragionamento concluso</summary><div class="thought-content">${innerParsed}</div></details>\n\n`;
+                return `<details class="thought-block"${detailsAttr}><summary><span class="material-icons-round" style="font-size:14px">psychology</span>Ragionamento concluso</summary><div class="thought-content">${innerParsed}</div></details>\n\n`;
             });
             
             if (processedContent.match(/<think>([\s\S]*)$/i) && !processedContent.match(/<\/think>/i)) {
                 processedContent = processedContent.replace(/<think>([\s\S]*)$/i, (match, p1) => {
+                    if (hideThoughts) return "";
                     let restoredP1 = p1;
                     restoredP1 = restoredP1.replace(/__INLINE_CODE_PLACEHOLDER_(\d+)__/g, (m, idx) => inlineCodes[parseInt(idx, 10)]);
                     restoredP1 = restoredP1.replace(/__CODE_BLOCK_PLACEHOLDER_(\d+)__/g, (m, idx) => codeBlocks[parseInt(idx, 10)]);
                     const innerParsed = marked.parse(restoredP1.trim());
-                    return `<details class="thought-block" open><summary><span class="material-icons-round" style="font-size:14px">psychology</span>Ragionamento in corso...<span class="typing-dots-inline" style="margin-left:8px"><span></span><span></span><span></span></span></summary><div class="thought-content">${innerParsed}</div></details>\n\n`;
+                    return `<details class="thought-block"${detailsAttr}><summary><span class="material-icons-round" style="font-size:14px">psychology</span>Ragionamento in corso...<span class="typing-dots-inline" style="margin-left:8px"><span></span><span></span><span></span></span></summary><div class="thought-content">${innerParsed}</div></details>\n\n`;
                 });
             }
             

@@ -685,8 +685,7 @@ async function loadSession(sessionId) {
                     if (!msg.content || msg.content === lastUserContent) continue;
                     lastUserContent = msg.content;
 
-                    const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
-                    if (turnSteps.length > 0 && hasExeSteps) {
+                    if (turnSteps.length > 0) {
                         renderProcessGroupFromHistory(turnId, turnSteps, fragment);
                         pgCount++;
                     }
@@ -697,6 +696,7 @@ async function loadSession(sessionId) {
                     bubble.className = "message-bubble";
 
                     if (msg.content) {
+                        bubble.setAttribute("data-raw-content", msg.content);
                         bubble.innerHTML = renderMarkdown(msg.content);
                         enhanceCodeBlocks(bubble);
                     }
@@ -745,8 +745,7 @@ async function loadSession(sessionId) {
                     }
 
                     if (hasContent) {
-                        const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
-                        if (turnSteps.length > 0 && hasExeSteps) {
+                        if (turnSteps.length > 0) {
                             renderProcessGroupFromHistory(turnId, turnSteps, fragment);
                             pgCount++;
                             turnSteps = [];
@@ -754,6 +753,7 @@ async function loadSession(sessionId) {
                         const group = createMessageGroup("agent", fragment);
                         const bubble = document.createElement("div");
                         bubble.className = "message-bubble";
+                        bubble.setAttribute("data-raw-content", msg.content);
                         bubble.innerHTML = renderMarkdown(msg.content);
                         enhanceCodeBlocks(bubble);
 
@@ -780,8 +780,7 @@ async function loadSession(sessionId) {
                     }
 
                     if (msgToolCall) {
-                        const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
-                        if (turnSteps.length > 0 && hasExeSteps) {
+                        if (turnSteps.length > 0) {
                             renderProcessGroupFromHistory(turnId, turnSteps, fragment);
                             pgCount++;
                             turnSteps = [];
@@ -801,6 +800,7 @@ async function loadSession(sessionId) {
                         const group = createMessageGroup("agent", fragment);
                         const bubble = document.createElement("div");
                         bubble.className = "message-bubble";
+                        bubble.setAttribute("data-raw-content", toolContent);
                         bubble.innerHTML = renderMarkdown(toolContent);
                         enhanceCodeBlocks(bubble);
 
@@ -833,7 +833,7 @@ async function loadSession(sessionId) {
                 } else if (msg.role === "tool") {
                 }
             }
-            if (turnSteps.length > 0 && turnSteps.some(s => s.badge === "EXE")) {
+            if (turnSteps.length > 0) {
                 renderProcessGroupFromHistory(turnId, turnSteps, fragment);
                 pgCount++;
             }
@@ -1407,6 +1407,8 @@ function populateSettings(cfg) {
     $("s-agent-reasoning").value = d.reasoningEffort || "";
 
     $("s-mobile-enter-newline").checked = localStorage.getItem("shibaclaw_mobile_enter_newline") !== "false";
+    $("s-ui-hide-thoughts").checked = localStorage.getItem("shibaclaw_hide_thoughts") === "true";
+    $("s-ui-collapse-thoughts").checked = localStorage.getItem("shibaclaw_collapse_thoughts") === "true";
 
     // Audio settings
     const au = cfg.audio || {};
@@ -1880,8 +1882,10 @@ window.saveSettings = async function () {
 
     try {
         localStorage.setItem("shibaclaw_mobile_enter_newline", $("s-mobile-enter-newline").checked ? "true" : "false");
+        localStorage.setItem("shibaclaw_hide_thoughts", $("s-ui-hide-thoughts").checked ? "true" : "false");
+        localStorage.setItem("shibaclaw_collapse_thoughts", $("s-ui-collapse-thoughts").checked ? "true" : "false");
     } catch (e) {
-        console.warn("Unable to persist mobile enter preference", e);
+        console.warn("Unable to persist UI preferences", e);
     }
 
     try {

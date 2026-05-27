@@ -114,13 +114,9 @@ function initSocket() {
         if (data.session_key && data.session_key !== state.sessionId) return;
         clearTimeout(state._typingBubbleTimeout);
         hideTypingBubble();
-        // We no longer add a destructive GEN block if we have a stream bubble,
-        // we just finalize it so it stays natively on screen.
         _finalizeStreamBubble(data.id);
-        
-        // Only fallback to showThinking if there was no stream bubble at all
-        // to avoid duplicating text.
         showThinking("Sto riflettendo...");
+        addProcessStep(data.id, data.content || "Thinking...", "GEN");
     });
 
     realtime.on("agent_tool", (data) => {
@@ -177,6 +173,7 @@ function initSocket() {
             if (state._streamBuffers) delete state._streamBuffers[mid];
             // Re-render with final content (which may include <think> stripping, etc.)
             if (data.content) {
+                streamBubble.setAttribute("data-raw-content", data.content);
                 streamBubble.innerHTML = renderMarkdown(data.content);
                 enhanceCodeBlocks(streamBubble);
             }

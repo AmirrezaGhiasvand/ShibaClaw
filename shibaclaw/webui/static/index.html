@@ -442,6 +442,26 @@
                             <label class="toggle"><input type="checkbox" id="s-mobile-enter-newline" checked><span
                                     class="toggle-slider"></span></label>
                         </div>
+                        <div class="field-row field-row-stack">
+                            <label>Thought Blocks (Reasoning Models)</label>
+                            <p class="settings-note">Control how agent reasoning blocks are displayed in the chat (for models emitting raw &lt;think&gt; tags, e.g., DeepSeek-R1).</p>
+                            <div style="display:flex; gap:24px; margin-top:8px">
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <div class="toggle" style="flex-shrink:0;">
+                                        <input type="checkbox" id="s-ui-hide-thoughts">
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                    <span style="font-size:13px; font-weight:normal; color:var(--text-primary);">Hide completely</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <div class="toggle" style="flex-shrink:0;">
+                                        <input type="checkbox" id="s-ui-collapse-thoughts">
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                    <span style="font-size:13px; font-weight:normal; color:var(--text-primary);">Collapse by default</span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
 
 
