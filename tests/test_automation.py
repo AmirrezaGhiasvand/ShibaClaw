@@ -1,10 +1,8 @@
 import asyncio
-import time
-from unittest.mock import AsyncMock, patch
 import pytest
 
 from shibaclaw.automation.service import AutomationService
-from shibaclaw.automation.types import AutomationJob, AutomationPayload, AutomationSchedule
+from shibaclaw.automation.types import AutomationPayload, AutomationSchedule
 from shibaclaw.agent.tools.automation import AutomationTool
 
 

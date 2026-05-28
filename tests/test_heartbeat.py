@@ -1,4 +1,3 @@
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -293,19 +292,10 @@ class TestHeartbeatService:
     def test_frontmatter_does_not_override_enabled_or_interval(self, tmp_path):
         pytest.skip("Porting to AutomationService")
 
-        status = service.status()
-
-        assert status["enabled"] is True
-        assert status["interval_min"] == 30
-        assert status["session_key"] == "heartbeat:file"
 
     def test_defaults_for_new_fields(self, tmp_path):
-        service = AutomationService(
-            store_path=tmp_path / "automation.json",
-            workspace=tmp_path,
-            provider=object(),
-            model="test-model",
-        )
+        # service creation not required for this test; defaults are handled
+        # by AutomationPayload and do not need a running AutomationService.
         # Defaults are handled in AutomationPayload
         payload = AutomationPayload(kind="heartbeat")
         assert payload.session_key is None
