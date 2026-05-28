@@ -155,3 +155,4 @@ filterwarnings = [
     "ignore::DeprecationWarning:websockets.*",
     "ignore::DeprecationWarning:uvicorn.*",
 ]
+

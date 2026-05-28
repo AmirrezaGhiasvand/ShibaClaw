@@ -1,6 +1,6 @@
 {
     "version": "0.5.2",
-    "release_notes": "**Unified Automation Engine & UI** — Completely refactored the previously disjointed "Cron" and "Heartbeat" systems into a single, unified "Automations" engine",
+    "release_notes": "**Unified Automation Engine & UI** — Completely refactored the previously disjointed \"Cron\" and \"Heartbeat\" systems into a single, unified \"Automations\" engine",
     "changes": [
         {
             "path": "CHANGELOG.md",
