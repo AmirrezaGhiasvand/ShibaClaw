@@ -632,12 +632,20 @@ class AutomationService:
             and j.schedule.at_ms <= now
             and not j.state.last_run_at_ms
         ]
+        # Fire overdue one-shot jobs immediately. Create background tasks
+        # and await them so that `start()` only returns once these jobs
+        # have been executed (this makes startup behaviour deterministic
+        # for tests and callers that expect immediate execution).
+        tasks: list[asyncio.Task] = []
         for job in overdue:
             logger.info(
                 "AutomationService: firing overdue job '{}' (was scheduled at {})",
                 job.name, job.schedule.at_ms,
             )
-            asyncio.create_task(self._run_job_bg(job, force=True))
+            tasks.append(asyncio.create_task(self._run_job_bg(job, force=True)))
+
+        if tasks:
+            await asyncio.gather(*tasks)
 
     async def _on_timer(self) -> None:
         now = _now_ms()
