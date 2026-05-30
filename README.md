@@ -22,14 +22,12 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.5.3</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.5.4</b> — Click to see what's new</summary>
 
-This major release brings a complete overhaul to background tasks:
-- **Unified Automation Engine & UI** — Refactored "Cron" and "Heartbeat" systems into a single "Automations" engine with a dedicated, premium control center in the WebUI.
-- **Realtime Background Telemetry** — The UI global status indicator now pulses gold ("Executing...") whenever any automated job runs silently in the background.
-- **Native TASK.md Syncing** — The WebUI now reads and writes `TASK.md` directly via the filesystem, ensuring perfect synchronization between the UI and the agent's directives.
-- **Boot Storm Prevention** — Recurring jobs that were missed while the gateway was offline are now silently "fast-forwarded" to their next occurrence upon boot, preventing instant execution storms.
-- **Modern Workspace Summary** — A sleek new glassmorphic widget at the bottom of the sidebar displays Active Channels, the Configured Provider, and strict Workspace Restriction status.
+- **Automation — schedule kind inference** — When deserialising jobs the schedule `kind` is now inferred correctly from the stored fields (`expr`, `everyMs`, `atMs`) instead of defaulting to `every`, preventing cron jobs from being treated as intervals.
+- **Automation — atomic & async-safe persistence** — Hardened automation persistence: writes are now atomic (temporary file + replace) and async-safe (`_save()` wraps I/O in the event loop executor and serialises saves), eliminating race conditions when multiple jobs save concurrently.
+- **Automation — force-run behaviour** — Running one-shot `at` jobs with `force=True` now consistently clears `next_run_at_ms` and disables the job when appropriate, avoiding accidental re-scheduling of one-shot jobs.
+- **Migration & startup** — Legacy job migration and overdue `at` job firing are now robust to missing/invalid schedule kinds, and startup execution of overdue jobs is deterministic and single-shot.
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 
