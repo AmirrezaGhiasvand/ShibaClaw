@@ -456,9 +456,7 @@ If it saved you time, secured your workflow, or just made you smile — <b>leave
 <p align="center">
   ⭐ <a href="https://github.com/RikyZ90/ShibaClaw">Star the repo</a> &nbsp;·&nbsp;
   🐛 <a href="https://github.com/RikyZ90/ShibaClaw/issues">Open an issue</a> &nbsp;·&nbsp;
-  🔧 <a href="https://github.com/RikyZ90/ShibaClaw/pulls">Send a PR</a> &nbsp;·&nbsp;
-  💬 <a href="https://discord.gg/kys6UYHmEb">Join the Discord</a> &nbsp;·&nbsp;
-  📦 <a href="https://clawhub.ai/">Browse ClawHub</a>
+  🔧 <a href="https://github.com/RikyZ90/ShibaClaw/pulls">Send a PR</a>
 </p>
 
 ***
