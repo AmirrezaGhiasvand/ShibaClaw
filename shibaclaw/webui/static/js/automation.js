@@ -75,7 +75,7 @@ async function loadAutomationPanel() {
 
         const statusData = await statusRes.json();
         const jobsData = await jobsRes.json();
-        
+
         // Hide system heartbeat job from UI completely
         _autoJobs = (jobsData.jobs || []).filter(job => {
             const isHeartbeat = (job.payload || {}).kind === 'heartbeat';
@@ -486,10 +486,6 @@ window.saveJobForm = async function () {
         const data = await res.json();
         if (!res.ok) throw data.error || `HTTP ${res.status}`;
 
-        if (message) {
-            await _syncTaskMd(name, message);
-        }
-
         closeJobForm();
         await loadAutomationPanel();
     } catch (e) {
@@ -505,45 +501,6 @@ window.saveJobForm = async function () {
         }
     }
 };
-
-async function _syncTaskMd(taskName, taskMessage) {
-    try {
-        let taskMd = '';
-        try {
-            const resp = await authFetch(`/api/file-get?path=TASK.md&_t=${Date.now()}`);
-            if (resp.ok) taskMd = await resp.text();
-        } catch (_) { }
-
-        const sectionHeader = `### Task: ${taskName}`;
-        const escapedName = taskName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const reExisting = new RegExp(`(^|\\n)### Task: ${escapedName}\\s*\\n[\\s\\S]*?(?=\\n### |\\n## |$)`, 'g');
-        taskMd = taskMd.replace(reExisting, '');
-
-        if (!/^##\s+Active Tasks\s*$/m.test(taskMd)) {
-            if (taskMd && !taskMd.endsWith('\n')) taskMd += '\n';
-            taskMd += '\n## Active Tasks\n';
-        }
-
-        const activeMatch = /^(##\s+Active Tasks\s*\n)/m.exec(taskMd);
-        if (activeMatch) {
-            const insertPos = activeMatch.index + activeMatch[0].length;
-            const before = taskMd.slice(0, insertPos);
-            const after = taskMd.slice(insertPos);
-            const newEntry = `\n${sectionHeader}\n${taskMessage}\n\n`;
-            taskMd = before + newEntry + after;
-        }
-
-        taskMd = taskMd.replace(/\n{3,}/g, '\n\n').trim() + '\n';
-
-        await authFetch('/api/file-save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: 'TASK.md', content: taskMd }),
-        });
-    } catch (e) {
-        console.warn('Failed to sync TASK.md:', e);
-    }
-}
 
 async function _removeFromTaskMd(taskName) {
     try {

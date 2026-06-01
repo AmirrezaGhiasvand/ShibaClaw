@@ -140,6 +140,70 @@ class TestHeartbeatTaskExtraction:
 
         assert _extract_active_tasks(content, "Resoconto giornaliero") == "Invia il report quotidiano al canale."
 
+    def test_global_heartbeat_ignores_sections_managed_by_automation_jobs(self, tmp_path):
+        service = AutomationService(store_path=tmp_path / "automation.json", workspace=tmp_path)
+
+        heartbeat_job = service.add_job(
+            "Heartbeat",
+            AutomationSchedule(kind="every", every_ms=1_800_000),
+            AutomationPayload(kind="heartbeat"),
+        )
+        scheduled_job = service.add_job(
+            "Resoconto giornaliero",
+            AutomationSchedule(kind="every", every_ms=60_000),
+            AutomationPayload(kind="scheduled", message="Invia il report quotidiano al canale."),
+        )
+        service.enable_job(scheduled_job.id, False)
+
+        completed_job = service.add_job(
+            "Pulizia archivio",
+            AutomationSchedule(kind="at", at_ms=1),
+            AutomationPayload(kind="scheduled", message="Pulisci gli allegati vecchi."),
+        )
+        completed_job.enabled = False
+        completed_job.state.last_run_at_ms = 123456
+        completed_job.state.next_run_at_ms = 0
+
+        content = (
+            "# TASK.md\n\n"
+            "## Active Tasks\n\n"
+            "### Task: Resoconto giornaliero\n"
+            "Invia il report quotidiano al canale.\n\n"
+            "### Task: Pulizia archivio\n"
+            "Pulisci gli allegati vecchi.\n\n"
+            "### Task: Follow-up manuale\n"
+            "Controlla se ci sono richieste aperte.\n\n"
+            "## Completed\n"
+        )
+
+        assert service._resolve_heartbeat_tasks(heartbeat_job, content) == "Controlla se ci sono richieste aperte."
+
+    def test_named_heartbeat_job_keeps_its_exact_section(self, tmp_path):
+        service = AutomationService(store_path=tmp_path / "automation.json", workspace=tmp_path)
+
+        heartbeat_job = service.add_job(
+            "Resoconto giornaliero",
+            AutomationSchedule(kind="every", every_ms=1_800_000),
+            AutomationPayload(kind="heartbeat"),
+        )
+        service.add_job(
+            "Altro job",
+            AutomationSchedule(kind="every", every_ms=60_000),
+            AutomationPayload(kind="scheduled", message="Ignora questo job."),
+        )
+
+        content = (
+            "# TASK.md\n\n"
+            "## Active Tasks\n\n"
+            "### Task: Resoconto giornaliero\n"
+            "Invia il report quotidiano al canale.\n\n"
+            "### Task: Altro job\n"
+            "Ignora questo job.\n\n"
+            "## Completed\n"
+        )
+
+        assert service._resolve_heartbeat_tasks(heartbeat_job, content) == "Invia il report quotidiano al canale."
+
 
 class TestWebuiHeartbeatDelivery:
     @pytest.mark.asyncio

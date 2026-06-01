@@ -164,6 +164,43 @@ def _find_task_section(content: str, job_name: str) -> str | None:
     return None
 
 
+def _normalize_task_name(name: str) -> str:
+    return re.sub(r"\s+", " ", (name or "").strip()).casefold()
+
+
+def _extract_named_task_sections(content: str) -> list[tuple[str, str]]:
+    cleaned = _strip_comments(content)
+    active_match = re.search(r"(?im)^##\s+Active Tasks\s*$", cleaned)
+    if active_match:
+        relevant = cleaned[active_match.end():]
+        boundary = re.search(r"(?im)^##\s+(Completed|Notes)\s*$", relevant)
+        if boundary:
+            relevant = relevant[:boundary.start()]
+    else:
+        relevant = cleaned
+
+    heading_re = re.compile(
+        r"(?im)^(?:##\s*Task:\s*(?P<h2_task>[^\n]+)|###\s*Task:\s*(?P<h3_task>[^\n]+)|##\s+(?P<h2_name>[^\n#][^\n]*))\s*$"
+    )
+    matches = list(heading_re.finditer(relevant))
+    sections: list[tuple[str, str]] = []
+
+    for index, match in enumerate(matches):
+        body_start = match.end()
+        body_end = matches[index + 1].start() if index + 1 < len(matches) else len(relevant)
+        section_name = (
+            match.group("h2_task")
+            or match.group("h3_task")
+            or match.group("h2_name")
+            or ""
+        ).strip()
+        if not section_name:
+            continue
+        sections.append((section_name, _sanitize_task_body(relevant[body_start:body_end])))
+
+    return sections
+
+
 def _extract_active_tasks(content: str, job_name: str | None = None) -> str:
     """
     Extract the Active Tasks section from TASK.md.
@@ -728,6 +765,32 @@ class AutomationService:
         if self._running:
             self._rearm()
 
+    def _is_managed_task_section(self, task_name: str) -> bool:
+        normalized = _normalize_task_name(task_name)
+        return any(
+            _normalize_task_name(candidate.name) == normalized
+            for candidate in self._jobs.values()
+        )
+
+    def _resolve_heartbeat_tasks(self, job: AutomationJob, raw_content: str) -> str:
+        sections = _extract_named_task_sections(raw_content)
+        if not sections:
+            return _extract_active_tasks(raw_content, job.name)
+
+        target_name = _normalize_task_name(job.name)
+        for section_name, body in sections:
+            if _normalize_task_name(section_name) == target_name:
+                return body
+
+        # The global/system heartbeat should only consume ad-hoc task sections.
+        # Sections already managed by automation jobs are executed through their
+        # own job state and schedule, so including them here causes duplicate runs.
+        return "\n\n".join(
+            body
+            for section_name, body in sections
+            if body and not self._is_managed_task_section(section_name)
+        ).strip()
+
     # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
@@ -811,7 +874,7 @@ class AutomationService:
             )
             return
 
-        active_tasks = _extract_active_tasks(raw_content, job.name)
+        active_tasks = self._resolve_heartbeat_tasks(job, raw_content)
         if not active_tasks:
             logger.debug(
                 "AutomationService: heartbeat '{}' — no active tasks in '{}'",
