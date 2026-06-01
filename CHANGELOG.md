@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.5] - 2026-06-01
+
+### Fixed
+- **Automation / Heartbeat duplicate executions** — Prevented the global 30-minute heartbeat from re-executing tasks already managed by scheduled automations. Managed `TASK.md` sections are now ignored by the generic heartbeat resolver, and scheduled jobs are no longer mirrored back into `TASK.md` from the WebUI, so disabled or already-completed jobs are not triggered again unintentionally.
+- **Tests** — Added regression coverage for global heartbeat filtering of automation-managed task sections and for named heartbeat jobs keeping their exact `TASK.md` section.
+
 ## [0.5.4] - 2026-05-30
 
 ### Fixed
