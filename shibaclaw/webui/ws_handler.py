@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from collections import defaultdict, deque
 import io
 import json
 import mimetypes
@@ -29,6 +30,33 @@ from .gateway_client import gateway_client
 sessions: Dict[str, Dict[str, Any]] = {}  # ws_id → session state
 processing_state: Dict[str, Dict[str, Any]] = {}  # session_key → processing info
 _ws_clients: Dict[str, WebSocket] = {}  # ws_id → WebSocket instance
+_session_subscribers: dict[str, set[str]] = defaultdict(set)
+
+_MAX_SESSION_EVENTS = 200
+
+
+def _make_session_state(session_key: str) -> Dict[str, Any]:
+    return {"session_key": session_key, "processing": False, "queue": deque()}
+
+
+def _unsubscribe_ws(ws_id: str) -> None:
+    state = sessions.get(ws_id)
+    if not state:
+        return
+    session_key = state.get("session_key")
+    if not session_key:
+        return
+    subscribers = _session_subscribers.get(session_key)
+    if not subscribers:
+        return
+    subscribers.discard(ws_id)
+    if not subscribers:
+        _session_subscribers.pop(session_key, None)
+
+
+def _subscribe_ws_to_session(ws_id: str, session_key: str) -> None:
+    _unsubscribe_ws(ws_id)
+    _session_subscribers[session_key].add(ws_id)
 
 
 def _build_attachments(media_paths: list[str]) -> list[Dict[str, str]]:
@@ -65,14 +93,15 @@ def _build_attachments(media_paths: list[str]) -> list[Dict[str, str]]:
 async def _emit_to_session(session_key: str, msg: dict, *, exclude: str | None = None):
     """Send a message to all WebSocket clients subscribed to a session."""
     raw = json.dumps(msg)
-    for ws_id, state in list(sessions.items()):
-        if state.get("session_key") == session_key and ws_id != exclude:
-            ws = _ws_clients.get(ws_id)
-            if ws:
-                try:
-                    await ws.send_text(raw)
-                except Exception:
-                    pass
+    for ws_id in list(_session_subscribers.get(session_key, ())):
+        if ws_id == exclude:
+            continue
+        ws = _ws_clients.get(ws_id)
+        if ws:
+            try:
+                await ws.send_text(raw)
+            except Exception:
+                pass
 
 
 async def _emit_to_ws(ws: WebSocket, msg: dict):
@@ -111,8 +140,9 @@ async def ws_endpoint(websocket: WebSocket):
     # ── Session setup ──
     provided_id = msg.get("session_id")
     session_id = provided_id if provided_id else f"webui:{ws_id[:8]}"
-    sessions[ws_id] = {"session_key": session_id, "processing": False, "queue": []}
+    sessions[ws_id] = _make_session_state(session_id)
     _ws_clients[ws_id] = websocket
+    _subscribe_ws_to_session(ws_id, session_id)
     logger.info("🌐 WebUI client connected: {} (Session: {})", ws_id, session_id)
 
     profile_id = "default"
@@ -169,6 +199,7 @@ async def ws_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.debug("WS handler error: {}", e)
     finally:
+        _unsubscribe_ws(ws_id)
         sessions.pop(ws_id, None)
         _ws_clients.pop(ws_id, None)
         logger.info("🌐 WebUI client disconnected: {}", ws_id)
@@ -185,7 +216,7 @@ async def _emit_session_status(ws: WebSocket, session_key: str):
                 "session_key": session_key,
                 "processing": True,
                 "msg_id": ps.get("msg_id", ""),
-                "events": ps.get("events", []),
+                "events": list(ps.get("events", ())),
                 "started_at": ps.get("started_at", 0),
             },
         )
@@ -210,7 +241,7 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict):
 
     content = data.get("content", "").strip()
     session = sessions.setdefault(
-        ws_id, {"session_key": f"webui:{ws_id[:8]}", "processing": False, "queue": []}
+        ws_id, _make_session_state(f"webui:{ws_id[:8]}")
     )
     session_key = session["session_key"]
     cached_profile_id = session.get("profile_id")
@@ -240,7 +271,7 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict):
     }
 
     if session.get("processing"):
-        session.setdefault("queue", []).append(msg)
+        session.setdefault("queue", deque()).append(msg)
         await _emit_to_session(
             session_key,
             {
@@ -273,7 +304,7 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict):
         processing_state[session_key] = {
             "processing": True,
             "msg_id": message["id"],
-            "events": [],
+            "events": deque(maxlen=_MAX_SESSION_EVENTS),
             "started_at": time.time(),
         }
 
@@ -379,7 +410,7 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict):
         finally:
             q = session.get("queue") or []
             if q:
-                next_msg = q.pop(0)
+                next_msg = q.popleft()
                 session["task"] = asyncio.create_task(run_agent_job(next_msg))
             else:
                 session["processing"] = False
@@ -392,11 +423,10 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict):
 
 async def _emit_session_status_all(session_key: str):
     """Send session status to all clients subscribed to this session."""
-    for ws_id, state in list(sessions.items()):
-        if state.get("session_key") == session_key:
-            ws = _ws_clients.get(ws_id)
-            if ws:
-                await _emit_session_status(ws, session_key)
+    for ws_id in list(_session_subscribers.get(session_key, ())):
+        ws = _ws_clients.get(ws_id)
+        if ws:
+            await _emit_session_status(ws, session_key)
 
 
 async def _handle_stop(ws_id: str):
@@ -404,7 +434,7 @@ async def _handle_stop(ws_id: str):
     session = sessions.get(ws_id, {})
     if "task" in session:
         session["task"].cancel()
-    session["queue"] = []
+    session["queue"] = deque()
     session["processing"] = False
     sk = session.get("session_key", "")
     processing_state.pop(sk, None)
@@ -425,6 +455,7 @@ async def _handle_new_session(ws_id: str, ws: WebSocket, data: dict):
     new_key = f"webui:{uuid.uuid4().hex[:8]}"
     if ws_id in sessions:
         sessions[ws_id]["session_key"] = new_key
+        _subscribe_ws_to_session(ws_id, new_key)
 
     profile_id = (data or {}).get("profile_id", "default")
     if ws_id in sessions:
@@ -448,6 +479,7 @@ async def _handle_switch_session(ws_id: str, ws: WebSocket, data: dict):
         return
     if ws_id in sessions:
         sessions[ws_id]["session_key"] = session_id
+        _subscribe_ws_to_session(ws_id, session_id)
         logger.info("🔀 WebUI {} switched to session: {}", ws_id, session_id)
         await _emit_session_status(ws, session_id)
 
@@ -549,13 +581,12 @@ async def deliver_to_browsers(
                 pass
     else:
         # Original behavior: deliver only to matching session
-        for ws_id, state in list(sessions.items()):
-            if state.get("session_key") != session_key:
-                continue
+        raw = json.dumps(payload)
+        for ws_id in list(_session_subscribers.get(session_key, ())):
             ws = _ws_clients.get(ws_id)
             if ws:
                 try:
-                    await ws.send_text(json.dumps(payload))
+                    await ws.send_text(raw)
                     delivered += 1
                 except Exception:
                     pass

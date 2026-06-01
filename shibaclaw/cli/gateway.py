@@ -10,7 +10,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 import websockets
 from loguru import logger
@@ -51,6 +51,82 @@ def resolve_automation_target(job: Any) -> HeartbeatTarget:
         chat_id = session_key.split(":", 1)[1] if ":" in session_key else session_key
 
     return HeartbeatTarget(channel=channel, chat_id=chat_id, session_key=session_key)
+
+
+async def deliver_scheduled_job_result(
+    job: Any,
+    response: str,
+    *,
+    bus_publish: Callable[[Any], Awaitable[None]],
+    notify_webui: Callable[..., Awaitable[bool]],
+    broadcast_ws_event: Callable[[str, dict[str, Any], str | None], Awaitable[None]],
+    has_gateway_ws_clients: bool,
+    auth_token: str | None,
+) -> None:
+    """Deliver a scheduled automation result to its configured target."""
+    from shibaclaw.bus.events import OutboundMessage
+
+    target = resolve_automation_target(job)
+    payload = {
+        "content": response,
+        "source": "automation",
+        "msg_type": "response",
+    }
+
+    if job.payload.deliver:
+        if target.channel == "webui":
+            payload["persist"] = True
+            if has_gateway_ws_clients:
+                await broadcast_ws_event("session.notify", payload, session_key=target.session_key)
+            else:
+                await notify_webui(
+                    target.session_key,
+                    response,
+                    auth_token,
+                    source="automation",
+                    persist=True,
+                    msg_type="response",
+                )
+            return
+
+        await bus_publish(
+            OutboundMessage(channel=target.channel, chat_id=target.chat_id, content=response)
+        )
+
+        if has_gateway_ws_clients:
+            await broadcast_ws_event(
+                "session.notify",
+                {
+                    "content": response,
+                    "source": "automation",
+                    "persist": False,
+                    "msg_type": "notification",
+                },
+                session_key="",
+            )
+        else:
+            await notify_webui(
+                "",
+                response,
+                auth_token,
+                source="automation",
+                persist=False,
+                msg_type="notification",
+            )
+        return
+
+    payload["persist"] = False
+    if has_gateway_ws_clients:
+        await broadcast_ws_event("session.notify", payload, session_key=target.session_key)
+    else:
+        await notify_webui(
+            target.session_key,
+            response,
+            auth_token,
+            source="automation",
+            persist=False,
+            msg_type="response",
+        )
 
 
 def select_heartbeat_target(
@@ -385,8 +461,6 @@ async def gateway_command(
 
     async def on_scheduled_job(job: AutomationJob) -> str | None:
         """Execute a scheduled job: run an agent turn then optionally deliver."""
-        from shibaclaw.bus.events import OutboundMessage
-
         session_key = job.payload.session_key or job.name or f"automation:{job.id}"
 
         async def _noop_progress(*_args, **_kwargs) -> None:
@@ -404,46 +478,15 @@ async def gateway_command(
         if not response:
             response = "Automation job executed successfully."
 
-        if job.payload.deliver and job.payload.channel and job.payload.to:
-            await bus.publish_outbound(
-                OutboundMessage(
-                    channel=job.payload.channel,
-                    chat_id=job.payload.to,
-                    content=response,
-                )
-            )
-
-            # Only send fallback notification to the global session if not already delivering to WebUI
-            if job.payload.channel != "webui":
-                if _ws_clients:
-                    await _broadcast_ws_event(
-                        "session.notify",
-                        {
-                            "content": response,
-                            "source": "automation",
-                            "persist": False,
-                            "msg_type": "notification",
-                        },
-                        session_key="",
-                    )
-                else:
-                    await notify_webui_session(
-                        "", response, auth_token, source="automation", persist=False
-                    )
-        elif _ws_clients:
-            await _broadcast_ws_event(
-                "session.notify",
-                {"content": response, "source": "automation", "persist": False},
-                session_key=session_key,
-            )
-        else:
-            await notify_webui_session(
-                session_key,
-                response,
-                auth_token,
-                source="automation",
-                persist=False,
-            )
+        await deliver_scheduled_job_result(
+            job,
+            response,
+            bus_publish=bus.publish_outbound,
+            notify_webui=notify_webui_session,
+            broadcast_ws_event=_broadcast_ws_event,
+            has_gateway_ws_clients=bool(_ws_clients),
+            auth_token=auth_token,
+        )
 
         return response
 

@@ -600,12 +600,34 @@ class PackMemory:
         now = time.time()
         
         if not hasattr(self, '_prompt_tokens_cache'):
-            self._prompt_tokens_cache: dict[str, tuple[int, str, float, int]] = {}
+            self._prompt_tokens_cache: dict[str, tuple[int, str, float, tuple[Any, ...]]] = {}
+
+        tool_sig = tuple(
+            tool.get("function", {}).get("name", "") for tool in self._get_tool_definitions()
+        )
+        try:
+            mem_mtime = self.store.memory_file.stat().st_mtime_ns if self.store.memory_file.exists() else None
+        except FileNotFoundError:
+            mem_mtime = None
+        try:
+            user_mtime = self.store.user_file.stat().st_mtime_ns if self.store.user_file.exists() else None
+        except FileNotFoundError:
+            user_mtime = None
+        signature = (
+            len(session.messages),
+            session.last_consolidated,
+            session.metadata.get("model"),
+            session.metadata.get("profile_id"),
+            self.memory_max_prompt_tokens,
+            mem_mtime,
+            user_mtime,
+            tool_sig,
+        )
             
         cache_key = session.key
         if cache_key in self._prompt_tokens_cache:
-            est, src, cached_time, msg_len = self._prompt_tokens_cache[cache_key]
-            if msg_len == len(session.messages) and (now - cached_time) < 30.0:
+            est, src, cached_time, cached_signature = self._prompt_tokens_cache[cache_key]
+            if cached_signature == signature and (now - cached_time) < 30.0:
                 return est, src
 
         history = session.get_history(max_messages=0)
@@ -624,7 +646,7 @@ class PackMemory:
             self._get_tool_definitions(),
         )
         
-        self._prompt_tokens_cache[cache_key] = (est, src, now, len(session.messages))
+        self._prompt_tokens_cache[cache_key] = (est, src, now, signature)
         return est, src
 
     async def archive_snapshot(self, messages: list[dict[str, object]]) -> bool:
@@ -688,6 +710,7 @@ class PackMemory:
                 if not await self.consolidate_messages(chunk):
                     return
                 session.last_consolidated = end_idx
+                self._prompt_tokens_cache.pop(session.key, None)
                 self.sessions.save(session)
 
                 estimated, source = self.estimate_session_prompt_tokens(session)

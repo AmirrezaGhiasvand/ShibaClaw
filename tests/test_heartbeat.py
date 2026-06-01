@@ -5,6 +5,7 @@ import pytest
 
 from shibaclaw.brain.manager import PackManager
 from shibaclaw.cli.gateway import (
+    deliver_scheduled_job_result,
     resolve_automation_target,
     resolve_heartbeat_targets,
     resolve_webui_session_key,
@@ -113,6 +114,89 @@ class TestCronTargetResolution:
         assert target.channel == "webui"
         assert target.chat_id == "abcdef12"
         assert target.session_key == resolve_webui_session_key(None, "abcdef1234567890")
+
+    @pytest.mark.asyncio
+    async def test_deliver_scheduled_job_result_uses_webui_notify_bridge(self):
+        job = AutomationJob(
+            id="cron-webui",
+            name="WebUI delivery",
+            schedule=AutomationSchedule(kind="every", every_ms=60_000),
+            payload=AutomationPayload(
+                message="Run task",
+                deliver=True,
+                channel="webui",
+                session_key="webui:session-a",
+            ),
+            state=AutomationJobState(),
+        )
+
+        bus_publish = AsyncMock()
+        notify_webui = AsyncMock(return_value=True)
+        broadcast_ws_event = AsyncMock()
+
+        await deliver_scheduled_job_result(
+            job,
+            "Done",
+            bus_publish=bus_publish,
+            notify_webui=notify_webui,
+            broadcast_ws_event=broadcast_ws_event,
+            has_gateway_ws_clients=False,
+            auth_token="token",
+        )
+
+        bus_publish.assert_not_called()
+        broadcast_ws_event.assert_not_called()
+        notify_webui.assert_awaited_once_with(
+            "webui:session-a",
+            "Done",
+            "token",
+            source="automation",
+            persist=True,
+            msg_type="response",
+        )
+
+    @pytest.mark.asyncio
+    async def test_deliver_scheduled_job_result_falls_back_to_notification_for_non_webui_targets(self):
+        job = AutomationJob(
+            id="cron-telegram",
+            name="Telegram delivery",
+            schedule=AutomationSchedule(kind="every", every_ms=60_000),
+            payload=AutomationPayload(
+                message="Run task",
+                deliver=True,
+                channel="telegram",
+                to="12345",
+            ),
+            state=AutomationJobState(),
+        )
+
+        bus_publish = AsyncMock()
+        notify_webui = AsyncMock(return_value=True)
+        broadcast_ws_event = AsyncMock()
+
+        await deliver_scheduled_job_result(
+            job,
+            "Done",
+            bus_publish=bus_publish,
+            notify_webui=notify_webui,
+            broadcast_ws_event=broadcast_ws_event,
+            has_gateway_ws_clients=False,
+            auth_token="token",
+        )
+
+        bus_publish.assert_awaited_once()
+        outbound = bus_publish.await_args.args[0]
+        assert outbound.channel == "telegram"
+        assert outbound.chat_id == "12345"
+        assert outbound.content == "Done"
+        notify_webui.assert_awaited_once_with(
+            "",
+            "Done",
+            "token",
+            source="automation",
+            persist=False,
+            msg_type="notification",
+        )
 
 
 class TestHeartbeatTaskExtraction:

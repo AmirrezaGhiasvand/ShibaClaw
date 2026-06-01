@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import uuid
+from contextlib import suppress
 from typing import AsyncIterator, Callable
 
 import websockets
@@ -20,11 +21,14 @@ from loguru import logger
 class GatewayClient:
     """Singleton WebSocket client that connects to the gateway."""
 
+    _STREAM_QUEUE_MAXSIZE = 256
+
     def __init__(self):
         self._ws: websockets.ClientConnection | None = None
         self._pending: dict[str, asyncio.Future] = {}
         self._stream_queues: dict[str, asyncio.Queue] = {}
         self._event_handlers: dict[str, list[Callable]] = {}
+        self._handler_tasks: set[asyncio.Task] = set()
         self._connected = False
         self._recv_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
@@ -58,6 +62,9 @@ class GatewayClient:
         if self._recv_task:
             self._recv_task.cancel()
             self._recv_task = None
+        for task in list(self._handler_tasks):
+            task.cancel()
+        self._handler_tasks.clear()
         if self._ws:
             try:
                 await self._ws.close()
@@ -151,7 +158,7 @@ class GatewayClient:
                     # If this response belongs to a streaming request (e.g. chat),
                     # route it to the stream queue instead of _pending
                     if rid in self._stream_queues:
-                        await self._stream_queues[rid].put(msg)
+                        await self._queue_stream_item(rid, msg)
                     else:
                         fut = self._pending.pop(rid, None)
                         if fut and not fut.done():
@@ -163,14 +170,11 @@ class GatewayClient:
 
                     # If this event belongs to a streaming request, queue it
                     if rid and rid in self._stream_queues:
-                        await self._stream_queues[rid].put(msg)
+                        await self._queue_stream_item(rid, msg)
                     else:
                         # Dispatch to registered handlers
                         for handler in self._event_handlers.get(name, []):
-                            try:
-                                await handler(msg)
-                            except Exception as e:
-                                logger.debug("Event handler error for {}: {}", name, e)
+                            self._schedule_event_handler(name, handler, msg)
 
         except websockets.ConnectionClosed:
             pass
@@ -185,9 +189,38 @@ class GatewayClient:
                     fut.set_result({"type": "response", "ok": False, "error": "connection_lost"})
             self._pending.clear()
             # Signal end to all stream queues
-            for q in self._stream_queues.values():
-                await q.put(None)
+            for rid in list(self._stream_queues):
+                await self._queue_stream_item(rid, None)
             self._stream_queues.clear()
+
+    def _schedule_event_handler(self, name: str, handler: Callable, msg: dict) -> None:
+        task = asyncio.create_task(self._run_event_handler(name, handler, msg))
+        self._handler_tasks.add(task)
+        task.add_done_callback(self._handler_tasks.discard)
+
+    async def _run_event_handler(self, name: str, handler: Callable, msg: dict) -> None:
+        try:
+            await handler(msg)
+        except Exception as e:
+            logger.debug("Event handler error for {}: {}", name, e)
+
+    async def _queue_stream_item(self, request_id: str, item: dict | None) -> None:
+        queue = self._stream_queues.get(request_id)
+        if queue is None:
+            return
+
+        if queue.full():
+            is_lossy_event = (
+                isinstance(item, dict)
+                and item.get("type") == "event"
+                and item.get("name") in {"chat.progress", "chat.response_token"}
+            )
+            if is_lossy_event:
+                return
+            with suppress(asyncio.QueueEmpty):
+                queue.get_nowait()
+
+        await queue.put(item)
 
     def on_event(self, name: str, handler: Callable):
         """Register a handler for gateway push events."""
@@ -239,6 +272,7 @@ class GatewayClient:
 
         request_id = str(uuid.uuid4())[:8]
         queue: asyncio.Queue = asyncio.Queue()
+        queue = asyncio.Queue(maxsize=self._STREAM_QUEUE_MAXSIZE)
         self._stream_queues[request_id] = queue
 
         msg = json.dumps(

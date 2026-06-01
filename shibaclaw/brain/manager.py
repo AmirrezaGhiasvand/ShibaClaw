@@ -102,6 +102,10 @@ class PackManager:
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
         self._cache_mtime_ns: dict[str, int | None] = {}
+        self._cache_persisted_messages_count: dict[str, int] = {}
+        self._cache_persisted_last_consolidated: dict[str, int] = {}
+        self._cache_persisted_last_learned: dict[str, int] = {}
+        self._cache_persisted_metadata_json: dict[str, str] = {}
 
     def _get_session_mtime_ns(self, key: str) -> int | None:
         """Return the current mtime for a session file, if it exists."""
@@ -137,6 +141,10 @@ class PackManager:
         session = self._load(key)
         if session is None:
             session = Session(key=key)
+            self._cache_persisted_messages_count[key] = 0
+            self._cache_persisted_last_consolidated[key] = 0
+            self._cache_persisted_last_learned[key] = 0
+            self._cache_persisted_metadata_json[key] = "{}"
 
         self._cache[key] = session
         self._cache_mtime_ns[key] = current_mtime
@@ -184,6 +192,11 @@ class PackManager:
                     else:
                         messages.append(data)
 
+            self._cache_persisted_messages_count[key] = len(messages)
+            self._cache_persisted_last_consolidated[key] = last_consolidated
+            self._cache_persisted_last_learned[key] = last_learned
+            self._cache_persisted_metadata_json[key] = json.dumps(metadata, sort_keys=True)
+
             return Session(
                 key=key,
                 messages=messages,
@@ -199,21 +212,44 @@ class PackManager:
     def save(self, session: Session) -> None:
         """Save a session to disk."""
         path = self._get_session_path(session.key)
+        key = session.key
+
+        can_append = (
+            path.exists()
+            and key in self._cache_persisted_messages_count
+            and len(session.messages) >= self._cache_persisted_messages_count[key]
+            and session.last_consolidated == self._cache_persisted_last_consolidated.get(key, 0)
+            and session.last_learned == self._cache_persisted_last_learned.get(key, 0)
+            and json.dumps(session.metadata, sort_keys=True) == self._cache_persisted_metadata_json.get(key, "{}")
+        )
 
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                metadata_line = {
-                    "_type": "metadata",
-                    "key": session.key,
-                    "created_at": session.created_at.isoformat(),
-                    "updated_at": datetime.now().isoformat(),
-                    "metadata": session.metadata,
-                    "last_consolidated": session.last_consolidated,
-                    "last_learned": session.last_learned,
-                }
-                f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
-                for msg in session.messages:
-                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            if can_append:
+                new_msgs = session.messages[self._cache_persisted_messages_count[key]:]
+                if new_msgs:
+                    with open(path, "a", encoding="utf-8") as f:
+                        for msg in new_msgs:
+                            f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+                self._cache_persisted_messages_count[key] = len(session.messages)
+            else:
+                with open(path, "w", encoding="utf-8") as f:
+                    metadata_line = {
+                        "_type": "metadata",
+                        "key": session.key,
+                        "created_at": session.created_at.isoformat(),
+                        "updated_at": datetime.now().isoformat(),
+                        "metadata": session.metadata,
+                        "last_consolidated": session.last_consolidated,
+                        "last_learned": session.last_learned,
+                    }
+                    f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
+                    for msg in session.messages:
+                        f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+                self._cache_persisted_messages_count[key] = len(session.messages)
+                self._cache_persisted_last_consolidated[key] = session.last_consolidated
+                self._cache_persisted_last_learned[key] = session.last_learned
+                self._cache_persisted_metadata_json[key] = json.dumps(session.metadata, sort_keys=True)
 
             self._cache[session.key] = session
             self._cache_mtime_ns[session.key] = self._get_session_mtime_ns(session.key)

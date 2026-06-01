@@ -37,6 +37,8 @@ class ScentBuilder:
         # Keyed by profile_id so different profiles don't thrash the cache.
         self._bootstrap_cache: dict[str, str] = {}
         self._bootstrap_mtimes: dict[str, dict[str, float]] = {}
+        # Bounded image cache to avoid memory leaks: path -> (mtime_ns, mime, b64)
+        self._image_cache: dict[str, tuple[float, str, str]] = {}
 
     def build_static_prompt(
         self,
@@ -337,12 +339,40 @@ Root: {workspace_path}
             p = Path(path)
             if not p.is_file():
                 continue
-            raw = p.read_bytes()
+            try:
+                stat = p.stat()
+                mtime = stat.st_mtime_ns
+            except Exception:
+                mtime = 0
+
+            path_key = str(p.resolve())
+            if path_key in self._image_cache:
+                cached_mtime, cached_mime, cached_b64 = self._image_cache[path_key]
+                if cached_mtime == mtime:
+                    images.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{cached_mime};base64,{cached_b64}"},
+                            "_meta": {"path": str(p)},
+                        }
+                    )
+                    continue
+
+            try:
+                raw = p.read_bytes()
+            except Exception:
+                continue
+
             # Detect real MIME type from magic bytes; fallback to filename guess
             mime = detect_image_mime(raw) or mimetypes.guess_type(path)[0]
             if not mime or not mime.startswith("image/"):
                 continue
             b64 = base64.b64encode(raw).decode()
+
+            if len(self._image_cache) >= 100:
+                self._image_cache.pop(next(iter(self._image_cache)), None)
+            self._image_cache[path_key] = (mtime, mime, b64)
+
             images.append(
                 {
                     "type": "image_url",

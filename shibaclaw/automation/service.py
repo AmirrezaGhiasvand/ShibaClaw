@@ -260,6 +260,8 @@ class AutomationService:
     """
 
     _MAX_RUN_HISTORY = 20
+    _SAVE_DEBOUNCE_S = 0.0
+    _TASK_CACHE_MAX_ITEMS = 8
 
     def __init__(
         self,
@@ -287,6 +289,9 @@ class AutomationService:
         self._timer_task: asyncio.Task | None = None
         self._wake = asyncio.Event()
         self._running = False
+        self._save_task: asyncio.Task | None = None
+        self._save_requested = False
+        self._task_cache: dict[str, tuple[int | None, str, list[tuple[str, str]]]] = {}
 
         # Suppress repeated warnings
         self._provider_warning_logged = False
@@ -392,6 +397,30 @@ class AutomationService:
                 await loop.run_in_executor(None, self._save_unlocked)
         except Exception as exc:
             logger.warning("AutomationService: failed async save: {}", exc)
+
+    def _request_save(self) -> None:
+        """Persist soon, coalescing bursts when already inside an event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._save_unlocked()
+            return
+
+        self._save_requested = True
+        if self._save_task and not self._save_task.done():
+            return
+        self._save_task = loop.create_task(self._flush_requested_save(), name="automation-save")
+
+    async def _flush_requested_save(self) -> None:
+        try:
+            await asyncio.sleep(self._SAVE_DEBOUNCE_S)
+            if self._save_requested:
+                self._save_requested = False
+                await self._save()
+        finally:
+            self._save_task = None
+            if self._save_requested:
+                self._request_save()
 
     # ------------------------------------------------------------------
     # Serialisation
@@ -682,6 +711,12 @@ class AutomationService:
         if self._timer_task:
             self._timer_task.cancel()
             self._timer_task = None
+        if self._save_task and not self._save_task.done():
+            self._save_task.cancel()
+            self._save_task = None
+        if self._save_requested:
+            self._save_requested = False
+            self._save_unlocked()
         logger.info("AutomationService: stopped")
 
     # ------------------------------------------------------------------
@@ -761,9 +796,29 @@ class AutomationService:
 
     async def _run_job_bg(self, job: AutomationJob, force: bool = False) -> None:
         await self._execute(job, force=force)
-        await self._save()
+        self._request_save()
+        await asyncio.sleep(0)
         if self._running:
             self._rearm()
+
+    def _load_task_document(self, hb_path: Path) -> tuple[str, list[tuple[str, str]]]:
+        key = str(hb_path.resolve())
+        try:
+            mtime_ns = hb_path.stat().st_mtime_ns
+        except FileNotFoundError:
+            self._task_cache.pop(key, None)
+            raise
+
+        cached = self._task_cache.get(key)
+        if cached and cached[0] == mtime_ns:
+            return cached[1], cached[2]
+
+        raw_content = hb_path.read_text(encoding="utf-8")
+        sections = _extract_named_task_sections(raw_content)
+        self._task_cache[key] = (mtime_ns, raw_content, sections)
+        while len(self._task_cache) > self._TASK_CACHE_MAX_ITEMS:
+            self._task_cache.pop(next(iter(self._task_cache)))
+        return raw_content, sections
 
     def _is_managed_task_section(self, task_name: str) -> bool:
         normalized = _normalize_task_name(task_name)
@@ -772,8 +827,14 @@ class AutomationService:
             for candidate in self._jobs.values()
         )
 
-    def _resolve_heartbeat_tasks(self, job: AutomationJob, raw_content: str) -> str:
-        sections = _extract_named_task_sections(raw_content)
+    def _resolve_heartbeat_tasks(
+        self,
+        job: AutomationJob,
+        raw_content: str,
+        *,
+        sections: list[tuple[str, str]] | None = None,
+    ) -> str:
+        sections = sections if sections is not None else _extract_named_task_sections(raw_content)
         if not sections:
             return _extract_active_tasks(raw_content, job.name)
 
@@ -803,7 +864,6 @@ class AutomationService:
         )
         
         job.state.last_status = "running"
-        await self._save()
             
         try:
             if job.payload.kind == "scheduled":
@@ -867,14 +927,14 @@ class AutomationService:
             return
 
         try:
-            raw_content = hb_path.read_text(encoding="utf-8")
+            raw_content, sections = self._load_task_document(hb_path)
         except Exception as exc:
             logger.warning(
                 "AutomationService: cannot read '{}': {}", hb_path, exc
             )
             return
 
-        active_tasks = self._resolve_heartbeat_tasks(job, raw_content)
+        active_tasks = self._resolve_heartbeat_tasks(job, raw_content, sections=sections)
         if not active_tasks:
             logger.debug(
                 "AutomationService: heartbeat '{}' — no active tasks in '{}'",
