@@ -35,9 +35,9 @@ See the [Changelog](./CHANGELOG.md) for full release history.
 ***
 
 <p align="center">
-  <img src="assets/settings.gif" width="420" alt="Settings">
-  <img src="assets/webui_welcome.png" width="380" alt="WebUI Welcome Screen">&nbsp;&nbsp;
-  <img src="assets/webui_chat.png" width="380" alt="WebUI Chat with Agent">
+  <img src="assets/settings.gif" width="420" height="250" alt="Settings">
+  <img src="assets/webui_welcome.png" width="380" height="250" alt="WebUI Welcome Screen">&nbsp;&nbsp;
+  <img src="assets/webui_chat.png" width="380" height="250" alt="WebUI Chat with Agent">
 </p>
 
 ***
