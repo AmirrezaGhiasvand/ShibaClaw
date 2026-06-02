@@ -27,7 +27,8 @@
         grid-template-columns: 1fr;
     }
 
-    .message-group {
+    .message-group.user,
+    .message-group.agent {
         max-width: 95%;
     }
 
@@ -63,9 +64,9 @@
         display: none;
     }
 
-    /* Reduce bottom padding to reclaim space */
+    /* Reduce padding to reclaim space for chat */
     .chat-history {
-        padding-bottom: 60px;
+        padding: 16px 12px 60px;
     }
 
     /* Sidebar: ensure session list is scrollable */
