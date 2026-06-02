@@ -22,11 +22,11 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.5.5</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.5.6</b> — Click to see what's new</summary>
 
-- **Performance Overhaul** — Massive optimizations across the board: WebSocket fan-out reduced from $O(N)$ to $O(1)$, bounded stream queues in the gateway to prevent blocking, and `httpx.AsyncClient` reuse for faster web tools.
-- **I/O & Memory Efficiency** — Implemented append-only session writes, debounced automation saves, `TASK.md` parsing cache, and an LRU cache for multimodal image encoding to eliminate RAM spikes.
-- **Automation Fixes** — Fixed missing completion notifications for scheduled jobs and prevented duplicate executions between the global heartbeat and managed automations.
+- **New Automated Installers** — Introduced automated installer scripts (`install.ps1` for Windows, `install.sh` for macOS/Linux) that set up ShibaClaw in a clean virtual environment with shortcut creation.
+- **Update Process Hardening** — Improved update restart reliability on Windows, gracefully shut down Uvicorn server to free TCP ports before spawning the new process, and added update cache invalidation to immediately reflect package upgrades.
+- **Mobile UI Responsiveness** — Fixed rendering issues for chat bubbles and tables on mobile screens to improve layout responsiveness.
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 

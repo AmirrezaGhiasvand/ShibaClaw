@@ -1,31 +1,56 @@
 {
-    "version": "0.5.5",
-    "release_notes": "Automation fixes: schedule kind inference, atomic/async-safe persistence, and correct force-run behaviour for one-shot jobs.",
+    "version": "0.5.6",
+    "release_notes": "Installer script enhancements, pip update cache invalidation, Uvicorn server restart hardening, and mobile UI responsiveness polish.",
     "changes": [
         {
             "path": "CHANGELOG.md",
             "overwrite": true,
-            "note": "Added v0.5.4 release notes."
+            "note": "Added v0.5.6 release notes."
         },
         {
             "path": "pyproject.toml",
             "overwrite": true,
-            "note": "Bumped version to 0.5.4."
+            "note": "Bumped version to 0.5.6."
         },
         {
             "path": "README.md",
             "overwrite": true,
-            "note": "Updated welcome announcement to v0.5.4."
+            "note": "Updated welcome announcement to v0.5.6."
         },
         {
-            "path": "shibaclaw/automation/service.py",
+            "path": "scripts/install/install.ps1",
             "overwrite": true,
-            "note": "Fixed job deserialization default kind, atomic saves, and force-run handling."
+            "note": "Added PowerShell installer script."
+        },
+        {
+            "path": "scripts/install/install.sh",
+            "overwrite": true,
+            "note": "Added Bash installer script."
+        },
+        {
+            "path": "shibaclaw/updater/apply.py",
+            "overwrite": true,
+            "note": "Added updater pip cache invalidation."
+        },
+        {
+            "path": "shibaclaw/webui/routers/system.py",
+            "overwrite": true,
+            "note": "Added system updates router and restart management."
+        },
+        {
+            "path": "shibaclaw/webui/static/css/chat.css",
+            "overwrite": true,
+            "note": "Fixed mobile chat layout issues."
+        },
+        {
+            "path": "shibaclaw/webui/static/css/responsive.css",
+            "overwrite": true,
+            "note": "Improved responsive styles for small screens."
         },
         {
             "path": "shibaclaw/updater/update_manifest.json",
             "overwrite": true,
-            "note": "Bumped packaged update manifest to v0.5.4."
+            "note": "Bumped packaged update manifest to v0.5.6."
         }
     ]
 }
