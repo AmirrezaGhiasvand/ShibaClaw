@@ -42,6 +42,50 @@ See the [Changelog](./CHANGELOG.md) for full release history.
 
 ***
 
+## ⚡ Quick Start
+
+### 🚀 Auto-Installer (Recommended)
+
+The easiest way to get started. It automatically installs Python, creates an isolated environment, and launches the onboarding wizard.
+
+**Bring your own model**: Seamlessly connect to local endpoints (Ollama, LM Studio) or use free API tiers via OpenRouter to start chatting at zero cost.
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/scripts/install/install.ps1 | iex
+```
+
+**Linux / macOS (Terminal):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/scripts/install/install.sh | bash
+```
+
+> **Note**: This script securely downloads ShibaClaw, creates an isolated virtual environment, installs dependencies, and automatically launches the UI. It does not modify your global Python environment.
+
+### Docker
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/docker-compose.yml -o docker-compose.yml
+docker compose up -d     # pulls from Docker Hub
+docker exec -it shibaclaw-gateway shibaclaw print-token
+```
+
+Open **http://localhost:3000**, paste the token, and follow the onboard wizard.
+
+Expose `shibaclaw-web` on your LAN (e.g. via reverse proxy) and open the same URL from your phone to chat with your agent on mobile.
+
+### pip
+
+```bash
+pip install shibaclaw
+shibaclaw web --with-gateway   # starts WebUI + agent engine on :3000
+```
+
+Open **http://localhost:3000** and follow the onboard wizard.  
+Prefer the CLI? `shibaclaw onboard` runs the same guided setup from the terminal.
+
+***
+
 ## ✨ Everything in One Agent
 
 <table>
@@ -135,50 +179,6 @@ Before executing any `pip`, `npm`, or `apt` install command, ShibaClaw intercept
 Why this matters: it shifts security entirely to the left. Instead of blindly blocking package managers or relying on post-install scans, it evaluates the exact dependency tree <i>before</i> execution. If a package contains critical/high CVEs, or if suspicious flags (like `--allow-unauthenticated` for `apt`) are detected, the installation is blocked. This allows the AI to autonomously build software without turning the host into a liability.
 
 Full disclosure policy and supported versions: [SECURITY.md](./SECURITY.md)
-
-***
-
-## ⚡ Quick Start
-
-### 🚀 Auto-Installer (Recommended)
-
-The easiest way to get started. It automatically installs Python, creates an isolated environment, and launches the onboarding wizard.
-
-**Start completely free**: Supports local models (Ollama/LM Studio) or free APIs via OpenRouter. No credit card or paid API key required.
-
-**Windows (PowerShell):**
-```powershell
-iwr -useb https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/scripts/install/install.ps1 | iex
-```
-
-**Linux / macOS (Terminal):**
-```bash
-curl -fsSL https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/scripts/install/install.sh | bash
-```
-
-> **Note**: This script securely downloads ShibaClaw, creates an isolated virtual environment, installs dependencies, and automatically launches the UI. It does not modify your global Python environment.
-
-### Docker
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/docker-compose.yml -o docker-compose.yml
-docker compose up -d     # pulls from Docker Hub
-docker exec -it shibaclaw-gateway shibaclaw print-token
-```
-
-Open **http://localhost:3000**, paste the token, and follow the onboard wizard.
-
-Expose `shibaclaw-web` on your LAN (e.g. via reverse proxy) and open the same URL from your phone to chat with your agent on mobile.
-
-### pip
-
-```bash
-pip install shibaclaw
-shibaclaw web --with-gateway   # starts WebUI + agent engine on :3000
-```
-
-Open **http://localhost:3000** and follow the onboard wizard.  
-Prefer the CLI? `shibaclaw onboard` runs the same guided setup from the terminal.
 
 ***
 
