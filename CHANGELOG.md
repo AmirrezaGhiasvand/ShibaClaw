@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.3] - 2026-06-16
+
+### Fixed
+- **Telegram Auth & Security Check** — Moved authorization verification to occur *before* media downloads, preventing unauthorized users from triggering resource-heavy file downloads.
+- **Telegram URL Escaping** — Resolved an issue where ampersands (`&`) in URLs were corrupted during Markdown-to-HTML conversion.
+- **Telegram Edited Messages** — Added support for receiving and correctly handling `edited_message` updates from Telegram.
+- **Telegram Memory Optimization** — Implemented strict FIFO caps and eviction logic for `_progress_messages` and cleaned up `_message_threads` to prevent slow memory leaks over time.
+- **Telegram Media Group Auth** — Fixed media group buffering to ensure authorization checks are fully respected before processing group media.
+- **CLI Channel Dependencies** — Improved the `channels status` CLI command to explicitly report missing optional dependencies for channels instead of silently marking them as broken or disabled.
+
 ## [0.6.2] - 2026-06-11
 
 ### Added

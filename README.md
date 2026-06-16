@@ -23,11 +23,11 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.6.2</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.6.3</b> — Click to see what's new</summary>
 
-- **Configurable Agent Timeouts** — Made agent loop, tool, and subagent timeouts configurable in WebUI Settings.
-- **Granular Request Cancellation** — Cancel single WebSocket request streams using request IDs without terminating the session.
-- **Baileys Vulnerability Fix** — Patched message spoofing and app state corruption in WhatsApp bridge by upgrading `@whiskeysockets/baileys` to `7.0.0-rc13`.
+- **Telegram Channel Security** — Moved authorization verification before media downloads, protecting server resources and disk space.
+- **Telegram Bug Fixes** — Fixed URL ampersand escaping corruption, handled edited messages, and resolved slow memory leaks.
+- **CLI Dependency Reporting** — Enhanced `channels status` command to explicitly report missing optional channel dependencies.
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 
