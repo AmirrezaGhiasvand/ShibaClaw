@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrEmpty($scriptDir)) {
-    $scriptDir = Get-Location
+    $scriptDir = (Get-Location).Path
 }
 $registerScript = Join-Path $scriptDir "register_windows_uninstall.ps1"
 $uninstallScript = Join-Path $scriptDir "uninstall.ps1"
