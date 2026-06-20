@@ -389,14 +389,12 @@ Log-Message "Uninstall completed."
 $uninstallContent | Set-Content -Path $uninstallScript -Encoding UTF8 -Force
 
 Show-InstallProgress -Message "Registering uninstall entry..." -Step 5 -Total 7
-if (Test-Path $registerScript) {
-    try {
-        $displayIcon = Join-Path $installDir "assets\shibaclaw.ico"
-        Register-ShibaClawUninstallEntry -UninstallScriptPath $uninstallScript -InstallDir $installDir -DisplayVersion "0.6.6" -DisplayIcon $displayIcon
-    }
-    catch {
-        Write-Warning "Could not register uninstall entry: $($_.Exception.Message)"
-    }
+try {
+    $displayIcon = Join-Path $installDir "assets\shibaclaw.ico"
+    Register-ShibaClawUninstallEntry -UninstallScriptPath $uninstallScript -InstallDir $installDir -DisplayVersion "0.6.6" -DisplayIcon $displayIcon
+}
+catch {
+    Write-Warning "Could not register uninstall entry: $($_.Exception.Message)"
 }
 
 Show-InstallProgress -Message "Creating shortcuts..." -Step 6 -Total 7
