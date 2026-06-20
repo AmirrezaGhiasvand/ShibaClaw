@@ -61,12 +61,18 @@ def is_running_in_pip_env() -> bool:
 
 
 def is_running_as_exe() -> bool:
-    """Return True when running inside a PyInstaller frozen bundle.
+    """Return True when running inside a packaged executable bundle.
 
-    PyInstaller sets ``sys.frozen = True`` and adds the ``sys._MEIPASS``
-    attribute pointing to the temporary extraction directory.
+    Checks for PyInstaller (sys.frozen) or a custom launcher named ShibaClaw.exe.
     """
-    return getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return True
+    try:
+        if os.path.basename(sys.executable).lower() == "shibaclaw.exe":
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def get_installation_method() -> InstallMethod:

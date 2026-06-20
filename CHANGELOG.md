@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5] - 2026-06-20
+
+### Fixed
+- **Native Windows Taskbar Icon** — Fixed an issue where the packaged Windows `.exe` displayed the generic Python icon in the taskbar instead of the ShibaClaw icon. The application now correctly bypasses explicitly setting `AppUserModelID` when running as a frozen executable to naturally group tasks and use the embedded `.exe` icon, and the `.NET` fallback dependencies (`clr`, `pythonnet`) have been explicitly added to the PyInstaller build to ensure pywebview host windows render the icon properly.
+- **WebUI Update Progress Timeout** — Handled network errors and timeouts during long update operations (like pip dependencies installation) by showing an "Update in Progress" background state instead of a hard failure in the UI.
+- **Windows EXE Update Installer Detection** — Fixed a bug where custom-packaged `ShibaClaw.exe` launchers were incorrectly identified as `pip` installations due to missing `sys.frozen` markers, which caused updates to restart only the gateway instead of triggering the native `.exe` self-replacing updater and shutting down the main app.
+
 ## [0.6.4] - 2026-06-16
 
 ### Changed

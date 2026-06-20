@@ -55,7 +55,7 @@ def run(
         logger.warning(
             "Native launcher is intended for Windows; running anyway on {}", sys.platform
         )
-    else:
+    elif not is_running_as_exe():
         _set_windows_app_user_model_id()
 
     _configure_desktop_auth(disable_auth=disable_auth)
@@ -260,7 +260,7 @@ def run(
             "--disable-gpu-compositing",
         )
 
-    if get_os_type() == "windows":
+    if get_os_type() == "windows" and not is_running_as_exe():
         _set_windows_app_user_model_id()
 
     try:

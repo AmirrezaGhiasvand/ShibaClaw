@@ -2270,7 +2270,30 @@ window.runUpdateAction = async function () {
                 ${footer}
             </div>`;
     } catch (e) {
-        panel.innerHTML = `<div class="update-error"><span class="material-icons-round">error_outline</span> ${escapeHtml(e.message || "Failed to apply the update.")}<br><button class="btn-secondary" style="margin-top:12px" onclick="loadUpdatePanel(true)">Retry</button></div>`;
+        const msg = e.message || "";
+        const isNetworkOrTimeout = e.name === "TypeError" || msg.includes("HTTP 504") || msg.includes("HTTP 502") || msg.includes("Failed to fetch") || msg.includes("NetworkError");
+        
+        if (isNetworkOrTimeout) {
+            panel.innerHTML = `
+                <div class="update-progress-card">
+                    <div class="update-progress-icon-wrap">
+                        <span class="material-icons-round update-icon-pulsing" style="color:var(--accent-orange)">system_update</span>
+                    </div>
+                    <div class="update-progress-container">
+                        <div class="update-progress-header">
+                            <span class="update-progress-title">Update in Progress</span>
+                        </div>
+                        <div class="update-progress-status" style="white-space:normal;line-height:1.4">
+                            The installation is taking a while or the server is restarting. The update is continuing in the background. Please wait a moment and then check the status.
+                        </div>
+                        <div class="update-meta" style="margin-top:12px">
+                            <button class="btn-primary" onclick="loadUpdatePanel(true)">Refresh status</button>
+                        </div>
+                    </div>
+                </div>`;
+        } else {
+            panel.innerHTML = `<div class="update-error"><span class="material-icons-round">error_outline</span> ${escapeHtml(msg || "Failed to apply the update.")}<br><button class="btn-secondary" style="margin-top:12px" onclick="loadUpdatePanel(true)">Retry</button></div>`;
+        }
     } finally {
         _updateState.busy = false;
     }

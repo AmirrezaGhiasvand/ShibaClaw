@@ -131,6 +131,10 @@ hiddenimports = [
     "lxml",
     "lxml._elementpath",
     # .NET bridge (pythonnet / clr_loader)
+    "clr",
+    "pythonnet",
+    "System",
+    "System.Drawing",
     "clr_loader",
     "clr_loader.ffi",
     "clr_loader.ffi.coreclr",
