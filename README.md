@@ -23,7 +23,7 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.6.5</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.6.6</b> — Click to see what's new</summary>
 
 - **Native Windows Taskbar Icon** — Fixed an issue where the packaged Windows `.exe` displayed the generic Python icon in the taskbar. The application now naturally groups by its main executable to retain the embedded custom icon, and the `.NET` fallback dependencies have been explicitly added to the PyInstaller build.
 - **Default Telegram Dependencies (v0.6.4)** — Moved Telegram libraries directly to the default project dependencies list, enabling Telegram to work out-of-the-box on standard `pipx`/`pip` installations.

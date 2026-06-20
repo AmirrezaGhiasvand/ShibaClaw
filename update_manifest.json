@@ -1,26 +1,26 @@
 {
-    "version": "0.6.5",
+    "version": "0.6.6",
     "release_notes": "Fixed Windows taskbar generic Python icon issue for the packaged .exe by naturally grouping via the executable and adding .NET fallback dependencies.",
     "changes": [
         {
             "path": "pyproject.toml",
             "overwrite": true,
-            "note": "Bumped version to 0.6.5."
+            "note": "Bumped version to 0.6.6."
         },
         {
             "path": "CHANGELOG.md",
             "overwrite": true,
-            "note": "Added v0.6.5 release notes."
+            "note": "Added v0.6.6 release notes."
         },
         {
             "path": "README.md",
             "overwrite": true,
-            "note": "Updated welcome announcement to v0.6.5."
+            "note": "Updated welcome announcement to v0.6.6."
         },
         {
             "path": "shibaclaw/updater/update_manifest.json",
             "overwrite": true,
-            "note": "Bumped packaged update manifest to v0.6.5."
+            "note": "Bumped packaged update manifest to v0.6.6."
         }
     ]
 }

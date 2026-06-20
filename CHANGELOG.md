@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [0.6.5] - 2026-06-20
+## [0.6.6] - 2026-06-20
 
 ### Fixed
 - **Native Windows Taskbar Icon** — Fixed an issue where the packaged Windows `.exe` displayed the generic Python icon in the taskbar instead of the ShibaClaw icon. The application now correctly bypasses explicitly setting `AppUserModelID` when running as a frozen executable to naturally group tasks and use the embedded `.exe` icon, and the `.NET` fallback dependencies (`clr`, `pythonnet`) have been explicitly added to the PyInstaller build to ensure pywebview host windows render the icon properly.

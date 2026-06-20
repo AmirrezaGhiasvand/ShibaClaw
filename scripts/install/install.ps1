@@ -130,36 +130,7 @@ if ($null -eq $desktopExec) {
 Write-Host "[OK] Installation complete!" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
-# Helper: stamp AppUserModelID on a .lnk shortcut via IPropertyStore COM.
-#
-# Why: pip/pipx gui-script stub exes have no icon in their PE header.
-# Windows taskbar reads the icon from the *physical exe* for ungrouped
-# processes, but when a shortcut carries a matching AppUserModelID the
-# taskbar button is tied to that AUMID and uses the shortcut's own
-# IconLocation instead — so the ShibaClaw icon appears correctly without
-# touching (and potentially corrupting) the stub exe.
-#
-# The AUMID must match WINDOWS_APP_USER_MODEL_ID in launcher.py.
-# ---------------------------------------------------------------------------
-function Set-ShortcutAUMID {
-    param(
-        [string]$LnkPath,
-        [string]$AppId
-    )
-    try {
-        $shellObj = New-Object -ComObject Shell.Application
-        $dir  = $shellObj.Namespace((Split-Path $LnkPath -Parent))
-        $item = $dir.ParseName((Split-Path $LnkPath -Leaf))
-        $lnk  = $item.GetLink
-        if ($lnk -and $lnk.PSObject.Methods.Match('SetPropertyValue')) {
-            # PKEY_AppUserModel_ID = {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5
-            $lnk.SetPropertyValue("{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3} 5", $AppId)
-            $lnk.Save()
-        }
-    } catch {
-        # Non-fatal: AUMID not set, taskbar icon falls back to Python icon.
-    }
-}
+
 
 Write-Host ">> Creating shortcuts on Desktop and Start Menu..." -ForegroundColor Cyan
 try {
@@ -176,7 +147,6 @@ try {
     }
 
     $WshShell    = New-Object -ComObject WScript.Shell
-    $shibaAUMID  = "RikyZ90.ShibaClaw.Desktop"
 
     # Desktop shortcut
     $DesktopPath = [System.Environment]::GetFolderPath('Desktop')
@@ -186,7 +156,6 @@ try {
     if ($desktopArgs)       { $Shortcut.Arguments    = $desktopArgs }
     if (Test-Path $icoPath) { $Shortcut.IconLocation = $icoPath }
     $Shortcut.Save()
-    Set-ShortcutAUMID -LnkPath $lnkDesktop -AppId $shibaAUMID
 
     # Start Menu shortcut
     $StartMenuPath = [System.Environment]::GetFolderPath('Programs')
@@ -196,7 +165,6 @@ try {
     if ($desktopArgs)       { $Shortcut2.Arguments    = $desktopArgs }
     if (Test-Path $icoPath) { $Shortcut2.IconLocation = $icoPath }
     $Shortcut2.Save()
-    Set-ShortcutAUMID -LnkPath $lnkStartMenu -AppId $shibaAUMID
 
     Write-Host "[OK] Shortcuts created with ShibaClaw icon." -ForegroundColor Green
 } catch {
