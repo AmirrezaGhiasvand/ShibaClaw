@@ -58,6 +58,9 @@ def run(
 
     _configure_desktop_auth(disable_auth=disable_auth)
 
+    if get_os_type() == "windows":
+        _set_windows_app_user_model_id()
+
     try:
         import webview  # type: ignore[import]
     except ImportError:
@@ -376,7 +379,18 @@ def _get_windows_icon_path() -> str | None:
 
 
 def _set_windows_app_user_model_id() -> None:
-    """Set a stable Windows AppUserModelID for taskbar grouping and icon lookup."""
+    """Set a stable Windows AppUserModelID for taskbar grouping and icon lookup.
+
+    For frozen PyInstaller builds we intentionally skip this step so Windows can
+    keep using the embedded .exe icon instead of a generic Python/process icon.
+    """
+    if get_os_type() != "windows":
+        return
+
+    if is_running_as_exe():
+        logger.debug("Skipping AppUserModelID on frozen executable to preserve embedded icon")
+        return
+
     import ctypes
     from ctypes import wintypes
 
@@ -390,7 +404,12 @@ def _set_windows_app_user_model_id() -> None:
 
 
 def _apply_windows_window_icon(window: Any, icon_path: str) -> None:
-    """Apply small and large icons to the native Windows window handle."""
+    """Apply the icon to the native Windows window and its class.
+
+    The taskbar can still use the generic process icon unless the window class
+    and the window handle are both updated. This is especially important for
+    the pip/venv launch path, where the process is still the Python launcher.
+    """
     import ctypes
     from ctypes import wintypes
 
@@ -401,6 +420,8 @@ def _apply_windows_window_icon(window: Any, icon_path: str) -> None:
     lr_loadfromfile = 0x0010
     sm_cxsmicon = 49
     sm_cysmicon = 50
+    gcl_hicon = -14
+    gcl_hicon_sm = -34
 
     # 1. Try .NET approach (most effective for Taskbar)
     try:
@@ -430,6 +451,10 @@ def _apply_windows_window_icon(window: Any, icon_path: str) -> None:
     user32.GetSystemMetrics.argtypes = [ctypes.c_int]
     user32.GetSystemMetrics.restype = ctypes.c_int
 
+    if hasattr(user32, "SetClassLongPtrW"):
+        user32.SetClassLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+        user32.SetClassLongPtrW.restype = ctypes.c_void_p
+
     big_icon = user32.LoadImageW(None, icon_path, image_icon, 256, 256, lr_loadfromfile)
     small_icon = user32.LoadImageW(
         None,
@@ -439,6 +464,11 @@ def _apply_windows_window_icon(window: Any, icon_path: str) -> None:
         user32.GetSystemMetrics(sm_cysmicon),
         lr_loadfromfile,
     )
+
+    if big_icon and hasattr(user32, "SetClassLongPtrW"):
+        user32.SetClassLongPtrW(hwnd, gcl_hicon, big_icon)
+    if small_icon and hasattr(user32, "SetClassLongPtrW"):
+        user32.SetClassLongPtrW(hwnd, gcl_hicon_sm, small_icon)
 
     if big_icon:
         user32.SendMessageW(hwnd, wm_seticon, icon_big, big_icon)

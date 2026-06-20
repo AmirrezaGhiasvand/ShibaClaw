@@ -166,6 +166,60 @@ class TestDesktopConfig:
         assert restored.window_width == 1920
 
 
+class TestWindowsAppUserModelId:
+    def test_sets_app_user_model_id_for_source_launch(self):
+        import ctypes
+
+        import shibaclaw.desktop.launcher as launcher
+
+        shell32 = mock.Mock()
+        shell32.SetCurrentProcessExplicitAppUserModelID = mock.Mock()
+        with mock.patch.object(launcher, "get_os_type", return_value="windows"), \
+             mock.patch.object(launcher, "is_running_as_exe", return_value=False), \
+             mock.patch.object(ctypes, "windll", types.SimpleNamespace(shell32=shell32), create=True):
+            launcher._set_windows_app_user_model_id()
+
+        shell32.SetCurrentProcessExplicitAppUserModelID.assert_called_once_with(
+            launcher.WINDOWS_APP_USER_MODEL_ID
+        )
+
+    def test_skips_app_user_model_id_for_frozen_exe(self):
+        import ctypes
+
+        import shibaclaw.desktop.launcher as launcher
+
+        shell32 = mock.Mock()
+        shell32.SetCurrentProcessExplicitAppUserModelID = mock.Mock()
+        with mock.patch.object(launcher, "get_os_type", return_value="windows"), \
+             mock.patch.object(launcher, "is_running_as_exe", return_value=True), \
+             mock.patch.object(ctypes, "windll", types.SimpleNamespace(shell32=shell32), create=True):
+            launcher._set_windows_app_user_model_id()
+
+        shell32.SetCurrentProcessExplicitAppUserModelID.assert_not_called()
+
+    def test_apply_windows_window_icon_sets_class_icons(self):
+        import ctypes
+
+        import shibaclaw.desktop.launcher as launcher
+
+        user32 = mock.Mock()
+        user32.LoadImageW.return_value = 123
+        user32.GetSystemMetrics.side_effect = [64, 64]
+        user32.SendMessageW.return_value = 0
+        user32.SetClassLongPtrW = mock.Mock()
+
+        window = mock.Mock()
+        window.native = None
+
+        with mock.patch.object(launcher, "_resolve_windows_window_handle", return_value=456), \
+             mock.patch.object(ctypes, "windll", types.SimpleNamespace(user32=user32), create=True):
+            launcher._apply_windows_window_icon(window, "C:/icons/shibaclaw.ico")
+
+        user32.SetClassLongPtrW.assert_any_call(456, -14, 123)
+        user32.SetClassLongPtrW.assert_any_call(456, -34, 123)
+        user32.SendMessageW.assert_any_call(456, 0x0080, 1, 123)
+
+
 # ---------------------------------------------------------------------------
 # webui.server — ServerManager
 # ---------------------------------------------------------------------------
