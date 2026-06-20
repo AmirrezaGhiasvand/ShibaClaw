@@ -5,7 +5,10 @@ $ErrorActionPreference = "Stop"
 
 [console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = $null
+if ($MyInvocation.MyCommand.Path) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
 if ([string]::IsNullOrEmpty($scriptDir)) {
     $scriptDir = (Get-Location).Path
 }
