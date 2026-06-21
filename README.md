@@ -35,10 +35,9 @@ See the [Changelog](./CHANGELOG.md) for full release history.
 ***
 
 <p align="center">
-  <img src="assets/webui_chat.png" width="380" height="250" alt="WebUI Chat with Agent">
-  <img src="assets/webui_welcome.png" width="380" height="250" alt="WebUI Welcome Screen">
-  <img src="assets/settings.gif" width="420" height="250" alt="Settings">&nbsp;&nbsp;
-
+  <img src="assets/webui_chat.webp" width="380" height="250" alt="WebUI Chat with Agent">
+  <img src="assets/webui_welcome.webp" width="380" height="250" alt="WebUI Welcome Screen">
+  <img src="assets/settings.webp" width="420" height="250" alt="Settings">
 </p>
 
 ***
@@ -208,9 +207,9 @@ Or download the pre-built Windows executable directly from the latest release:
 ## 🌐 WebUI
 
 <p align="center">
-  <img src="assets/settings.gif" width="420" alt="Settings">
-  <img src="assets/webui_welcome.png" width="380" alt="WebUI Welcome Screen">&nbsp;&nbsp;
-  <img src="assets/webui_chat.png" width="380" alt="WebUI Chat with Agent">
+  <img src="assets/settings.webp" width="420" height="250" alt="Settings">
+  <img src="assets/webui_welcome.webp" width="380" height="250" alt="WebUI Welcome Screen">
+  <img src="assets/webui_chat.webp" width="380" height="250" alt="WebUI Chat with Agent">
 </p>
 
 The WebUI is built-in — no separate frontend or Node.js required.
@@ -235,7 +234,7 @@ Expose it on your local network and open the same URL from your phone or tablet 
 ### ⚡ Dynamic Model Selection
 
 <p align="center">
-  <img src="assets/model_sel.jpg" width="600" alt="Dynamic Model Selector">
+  <img src="assets/model_sel.webp" width="600" alt="Dynamic Model Selector">
 </p>
 
 Change models per session — no more single global model, but a flexible choice for every conversation.
@@ -249,7 +248,7 @@ Change models per session — no more single global model, but a flexible choice
 ### 🤖 Agent Profiles
 
 <p align="center">
-  <img src="assets/hacker-mode.gif" width="600" alt="Agent Profile Selector">
+  <img src="assets/hacker-mode.webp" width="600" alt="Agent Profile Selector">
 </p>
 
 Switch the agent's personality on-the-fly without losing context. Each profile overrides the system prompt (SOUL.md) while keeping model, memory, and tools shared. Profiles are per-session — run a security audit in one tab and plan architecture in another.
