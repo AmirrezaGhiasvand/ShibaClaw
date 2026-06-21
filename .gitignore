@@ -26,6 +26,7 @@ uv.lock
 # Local data & research
 .vscode/
 .shibaclaw/
+.agents
 scratch/
 ROADMAP.md
 docker-compose.build.yml
