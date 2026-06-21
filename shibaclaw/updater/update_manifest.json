@@ -1,26 +1,26 @@
 {
-    "version": "0.6.4",
-    "release_notes": "Dependencies: Moved Telegram integration dependencies to be installed by default.",
+    "version": "0.6.7",
+    "release_notes": "Fixed critical memory leaks in ScentBuilder image cache and Telegram integrations, resolved WebUI multi-tab race conditions, hardened raw HTTP fallback client parsing, optimized network check retries, and introduced a new automated test suite.",
     "changes": [
         {
             "path": "pyproject.toml",
             "overwrite": true,
-            "note": "Bumped version to 0.6.4."
+            "note": "Bumped version to 0.6.7."
         },
         {
             "path": "CHANGELOG.md",
             "overwrite": true,
-            "note": "Added v0.6.4 release notes."
+            "note": "Added v0.6.7 release notes."
         },
         {
             "path": "README.md",
             "overwrite": true,
-            "note": "Updated welcome announcement to v0.6.4."
+            "note": "Updated welcome announcement to v0.6.7."
         },
         {
             "path": "shibaclaw/updater/update_manifest.json",
             "overwrite": true,
-            "note": "Bumped packaged update manifest to v0.6.4."
+            "note": "Bumped packaged update manifest to v0.6.7."
         }
     ]
 }

@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.7] - 2026-06-21
+
+### Fixed
+- **Memory Leak in Image Cache** — Capped the `ScentBuilder` image cache at a maximum of 32 images with FIFO eviction logic, preventing memory exhaustion (OOM) during long chat sessions with multiple image uploads.
+- **Telegram Memory Leaks** — Enforced strict FIFO limits on Telegram integration dictionaries (`_chat_ids` capped at 500, `_message_threads` capped at 1000) to ensure bounded memory usage in active or high-traffic group channels.
+- **WebUI Multi-Tab Race Condition** — Fixed a race condition where multiple open tabs of the same WebUI session could trigger parallel execution of the same message stream. The WebUI now uses a global `processing_state` dictionary keyed by the shared `session_key` to properly queue concurrent messages.
+- **HTTP Fallback Status Verification** — Hardened the raw socket HTTP fallback client (`gateway_client.py`) by explicitly splitting and checking the status line for `b" 200 "`, avoiding false-positive successful responses when a 500 error body contained the string "200".
+
+### Optimized
+- **Updater Network Performance** — Shifted the `httpx.Client` instantiation outside of the retry loop in the update checker (`checker.py`), enabling connection reuse and eliminating redundant DNS resolution and TLS handshakes during network retries.
+- **Message Sanitization Speed** — Added a fast-path early return in `_sanitize_empty_content` during assistant context assembly to avoid shallow-copying messages that do not require sanitization or stripping of `_meta` fields.
+- **Code Cleanups** — Removed redundant queue allocation in `_handle_stream` and cleaned up unused session retrieval code in `ws_handler.py`.
+
+### Added
+- **Automated Test Coverage** — Implemented a comprehensive suite of non-regression test cases verifying the bounded cache limits, the multi-tab websocket queueing, HTTP status parsing accuracy, and connection pool reuse.
+
 ## [0.6.6] - 2026-06-20
 
 ### Fixed
