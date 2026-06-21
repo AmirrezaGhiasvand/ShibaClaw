@@ -1,6 +1,4 @@
 import pytest
-import json
-import asyncio
 from unittest.mock import AsyncMock, patch
 from shibaclaw.webui.gateway_client import _http_get, _http_post, _http_delete
 

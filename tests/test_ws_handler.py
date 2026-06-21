@@ -43,9 +43,9 @@ async def test_ws_handler_multi_tab_race_condition():
         await first_job_can_finish.wait()
         yield {"t": "rt", "c": "Hello!"}
 
-    with patch("shibaclaw.webui.ws_handler._emit_to_session", AsyncMock()) as mock_emit_sess, \
-         patch("shibaclaw.webui.ws_handler._emit_to_ws", AsyncMock()) as mock_emit_ws, \
-         patch("shibaclaw.webui.ws_handler._emit_session_status_all", AsyncMock()) as mock_emit_status, \
+    with patch("shibaclaw.webui.ws_handler._emit_to_session", AsyncMock()), \
+         patch("shibaclaw.webui.ws_handler._emit_to_ws", AsyncMock()), \
+         patch("shibaclaw.webui.ws_handler._emit_session_status_all", AsyncMock()), \
          patch.object(gateway_client, "chat_stream", side_effect=mock_chat_stream):
 
         task1 = asyncio.create_task(

@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from shibaclaw.integrations.telegram import TelegramChannel, TelegramConfig
 from shibaclaw.bus.queue import MessageBus

@@ -1,4 +1,3 @@
-import pytest
 from shibaclaw.thinkers.base import Thinker
 
 
