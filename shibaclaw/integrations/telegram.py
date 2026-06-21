@@ -948,12 +948,11 @@ class TelegramChannel(BaseChannel):
     def _remember_thread_context(self, message) -> None:
         """Cache topic thread id by chat/message id for follow-up replies."""
         message_thread_id = getattr(message, "message_thread_id", None)
-        if message_thread_id is None:
-            return
-        key = (str(message.chat_id), message.message_id)
-        self._message_threads[key] = message_thread_id
-        while len(self._message_threads) > self._THREADS_CAP:
-            self._message_threads.pop(next(iter(self._message_threads)))
+        if message_thread_id is not None:
+            key = (message.chat_id, message.message_id)
+            self._message_threads[key] = message_thread_id
+            while len(self._message_threads) > self._THREADS_CAP:
+                self._message_threads.pop(next(iter(self._message_threads)))
 
     async def _forward_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Forward slash commands to the bus for unified handling in ShibaBrain."""

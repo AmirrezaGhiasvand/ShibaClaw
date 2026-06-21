@@ -273,7 +273,8 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict):
         "attachments": attachments_data,
     }
 
-    if session.get("processing"):
+    ps = processing_state.get(session_key)
+    if ps and ps.get("processing"):
         session.setdefault("queue", deque()).append(msg)
         await _emit_to_session(
             session_key,
@@ -464,7 +465,6 @@ async def _handle_cancel(ws_id: str, ws: WebSocket, data: dict):
 
 async def _handle_new_session(ws_id: str, ws: WebSocket, data: dict):
     """Handle new_session request."""
-    sessions.get(ws_id)
     new_key = f"webui:{uuid.uuid4().hex[:8]}"
     if ws_id in sessions:
         sessions[ws_id]["session_key"] = new_key

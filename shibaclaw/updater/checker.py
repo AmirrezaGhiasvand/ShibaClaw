@@ -242,21 +242,21 @@ def _save_cached_result(result: dict[str, Any]) -> None:
 
 def _request_json(url: str, *, timeout: float = _REQUEST_TIMEOUT) -> Any:
     last_error: Exception | None = None
-    for attempt in range(_REQUEST_RETRIES):
-        try:
-            with httpx.Client(
-                headers=_DEFAULT_HEADERS,
-                timeout=timeout,
-                follow_redirects=True,
-            ) as client:
+    with httpx.Client(
+        headers=_DEFAULT_HEADERS,
+        timeout=timeout,
+        follow_redirects=True,
+    ) as client:
+        for attempt in range(_REQUEST_RETRIES):
+            try:
                 response = client.get(url)
                 response.raise_for_status()
                 return response.json()
-        except (ValueError, httpx.HTTPError) as exc:
-            last_error = exc
-            if attempt + 1 >= _REQUEST_RETRIES:
-                break
-            time.sleep(0.4 * (attempt + 1))
+            except (ValueError, httpx.HTTPError) as exc:
+                last_error = exc
+                if attempt + 1 >= _REQUEST_RETRIES:
+                    break
+                time.sleep(0.4 * (attempt + 1))
     raise RuntimeError(str(last_error or "Unknown network error"))
 
 

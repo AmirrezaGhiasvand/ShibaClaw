@@ -121,6 +121,10 @@ class Thinker(ABC):
         result: list[dict[str, Any]] = []
         for msg in messages:
             content = msg.get("content")
+            
+            if isinstance(content, str) and content and "_meta" not in msg:
+                result.append(msg)
+                continue
 
             if isinstance(content, str) and not content:
                 clean = dict(msg)

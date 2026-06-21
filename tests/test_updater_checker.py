@@ -167,3 +167,39 @@ def test_check_source_uses_release_manifest_for_official_repo(tmp_path, monkeypa
     assert result["manifest_url"].endswith("update_manifest.json")
     assert result["action_command"] == "git fetch --tags && git checkout v0.3.8 && pip install -e ."
     assert "release manifest" in result["summary"].lower()
+
+
+def test_request_json_retries_and_reuses_client(monkeypatch):
+    import pytest
+    from shibaclaw.updater import checker
+    import httpx
+
+    client_instantiations = 0
+    get_calls = 0
+
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            nonlocal client_instantiations
+            client_instantiations += 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def get(self, url):
+            nonlocal get_calls
+            get_calls += 1
+            raise httpx.HTTPError("conn error")
+
+    monkeypatch.setattr(httpx, "Client", MockClient)
+    monkeypatch.setattr(time, "sleep", lambda x: None)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        checker._request_json("https://fake-url.com")
+
+    assert "conn error" in str(exc_info.value)
+    assert client_instantiations == 1
+    assert get_calls == 3
+

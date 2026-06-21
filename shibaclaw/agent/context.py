@@ -39,6 +39,7 @@ class ScentBuilder:
         self._bootstrap_mtimes: dict[str, dict[str, float]] = {}
         # Bounded image cache to avoid memory leaks: path -> (mtime_ns, mime, b64)
         self._image_cache: dict[str, tuple[float, str, str]] = {}
+        self._IMAGE_CACHE_MAX = 32
 
     def build_static_prompt(
         self,
@@ -367,19 +368,20 @@ Root: {workspace_path}
             mime = detect_image_mime(raw) or mimetypes.guess_type(path)[0]
             if not mime or not mime.startswith("image/"):
                 continue
-            b64 = base64.b64encode(raw).decode()
-
-            if len(self._image_cache) >= 100:
-                self._image_cache.pop(next(iter(self._image_cache)), None)
-            self._image_cache[path_key] = (mtime, mime, b64)
-
-            images.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:{mime};base64,{b64}"},
-                    "_meta": {"path": str(p)},
-                }
-            )
+            try:
+                b64 = base64.b64encode(raw).decode("utf-8")
+                self._image_cache[path_key] = (mtime, mime, b64)
+                while len(self._image_cache) > self._IMAGE_CACHE_MAX:
+                    self._image_cache.pop(next(iter(self._image_cache)))
+                images.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                        "_meta": {"path": str(p)},
+                    }
+                )
+            except Exception:
+                continue
 
         if not images:
             return text
@@ -388,6 +390,7 @@ Root: {workspace_path}
     def regenerate_nonce(self) -> None:
         """Regenerate the tool-output nonce (call once per agent loop iteration)."""
         self._tool_output_nonce = secrets.token_hex(8)
+
 
     def add_tool_result(
         self,

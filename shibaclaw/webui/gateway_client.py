@@ -271,7 +271,6 @@ class GatewayClient:
             return
 
         request_id = request_id or str(uuid.uuid4())[:8]
-        queue: asyncio.Queue = asyncio.Queue()
         queue = asyncio.Queue(maxsize=self._STREAM_QUEUE_MAXSIZE)
         self._stream_queues[request_id] = queue
 
@@ -473,14 +472,20 @@ async def _http_get(hosts: list[str], port: int, path: str, token: str) -> dict 
             try:
                 writer.write(f"GET {path} HTTP/1.0\r\nHost: gw\r\n{auth_hdr}\r\n".encode())
                 await writer.drain()
-                data = await asyncio.wait_for(reader.read(8192), timeout=10)
+                data = bytearray()
+                while True:
+                    chunk = await reader.read(8192)
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                status_line = data.split(b"\r\n", 1)[0]
+                if b" 200 " in status_line:
+                    body_start = data.find(b"\r\n\r\n")
+                    if body_start > 0:
+                        return json.loads(data[body_start + 4 :])
             finally:
                 writer.close()
                 await writer.wait_closed()
-            if b"200" in data:
-                body_start = data.find(b"\r\n\r\n")
-                if body_start > 0:
-                    return json.loads(data[body_start + 4 :])
         except Exception:
             continue
     return None
@@ -508,14 +513,21 @@ async def _http_post(hosts: list[str], port: int, path: str, body: dict, token: 
                     + payload
                 )
                 await writer.drain()
-                data = await asyncio.wait_for(reader.read(65536), timeout=30.0)
+                data = bytearray()
+                while True:
+                    chunk = await reader.read(8192)
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                
+                status_line = data.split(b"\r\n", 1)[0]
+                if b" 200 " in status_line:
+                    body_start = data.find(b"\r\n\r\n")
+                    if body_start > 0:
+                        return json.loads(data[body_start + 4 :])
             finally:
                 writer.close()
                 await writer.wait_closed()
-            if b"200" in data:
-                body_start = data.find(b"\r\n\r\n")
-                if body_start > 0:
-                    return json.loads(data[body_start + 4 :])
         except Exception:
             continue
     return None
@@ -532,14 +544,21 @@ async def _http_delete(hosts: list[str], port: int, path: str, token: str) -> di
             try:
                 writer.write(f"DELETE {path} HTTP/1.0\r\nHost: gw\r\n{auth_hdr}\r\n".encode())
                 await writer.drain()
-                data = await asyncio.wait_for(reader.read(8192), timeout=10.0)
+                data = bytearray()
+                while True:
+                    chunk = await reader.read(8192)
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                    
+                status_line = data.split(b"\r\n", 1)[0]
+                if b" 200 " in status_line:
+                    body_start = data.find(b"\r\n\r\n")
+                    if body_start > 0:
+                        return json.loads(data[body_start + 4 :])
             finally:
                 writer.close()
                 await writer.wait_closed()
-            if b"200" in data:
-                body_start = data.find(b"\r\n\r\n")
-                if body_start > 0:
-                    return json.loads(data[body_start + 4 :])
         except Exception:
             continue
     return None

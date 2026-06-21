@@ -31,3 +31,21 @@ def test_scent_builder_image_encoding_cache(tmp_path):
     os.utime(fake_img, ns=(stat1.st_atime_ns, stat1.st_mtime_ns + 5_000_000_000))
     res3 = builder._build_user_content("hello", [str(fake_img)])
     assert res3[0]["image_url"]["url"] != cached_b64
+
+
+def test_scent_builder_image_cache_eviction(tmp_path):
+    builder = ScentBuilder(tmp_path)
+    paths = []
+    for i in range(35):
+        img_path = tmp_path / f"test_{i}.png"
+        img_path.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + b"\x00" * 20)
+        paths.append(str(img_path))
+
+    builder._build_user_content("hello", paths)
+
+    assert len(builder._image_cache) == 32
+    assert str((tmp_path / "test_0.png").resolve()) not in builder._image_cache
+    assert str((tmp_path / "test_2.png").resolve()) not in builder._image_cache
+    assert str((tmp_path / "test_3.png").resolve()) in builder._image_cache
+    assert str((tmp_path / "test_34.png").resolve()) in builder._image_cache
+
