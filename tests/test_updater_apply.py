@@ -59,3 +59,32 @@ def test_apply_update_supports_manifest_only_payload(tmp_path, monkeypatch):
 
     assert report["version"] == "0.3.9"
     assert report["pip"]["output"] == "0.3.9"
+
+
+def test_apply_update_runs_exe_for_exe(tmp_path, monkeypatch):
+    from shibaclaw.updater import apply
+
+    monkeypatch.setattr(
+        apply,
+        "_exe_upgrade",
+        lambda version, download_url, progress_cb=None: {
+            "ok": True,
+            "output": f"updated {version} via {download_url}",
+        },
+    )
+
+    report = apply.apply_update(
+        {
+            "install_method": "exe",
+            "latest": "0.3.8",
+            "action_kind": "automatic",
+            "action_url": "https://example.com/ShibaClaw.zip",
+        },
+        tmp_path,
+        manifest={"version": "0.3.8", "changes": []},
+    )
+
+    assert report["requires_manual_action"] is False
+    assert report["exe"]["ok"] is True
+    assert "https://example.com/ShibaClaw.zip" in report["exe"]["output"]
+

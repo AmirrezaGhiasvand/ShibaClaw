@@ -56,6 +56,7 @@ function initListeners() {
     });
 
     $("btn-new-session").addEventListener("click", () => {
+        if (typeof closeSettingsView === "function") closeSettingsView();
         realtime.emit("new_session");
         closeSidebarOnMobile();
     });

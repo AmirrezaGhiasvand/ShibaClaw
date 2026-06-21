@@ -152,7 +152,7 @@
         </aside>
 
         <!-- Main Chat Area -->
-        <main class="chat-area">
+        <main class="chat-area" id="chat-area">
             <!-- Top Bar -->
             <header class="chat-header">
                 <button class="mobile-menu-btn" id="mobile-menu-btn">
@@ -310,199 +310,24 @@
                 </div>
             </div>
         </main>
-    </div>
 
-    <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
-
-    <!-- ── Modals ────────────────────────────────────────────── -->
-
-    <!-- ══ Automation Modal ══════════════════════════════════════════ -->
-    <div id="automation-modal" class="modal-backdrop">
-        <div class="modal modal-automation">
-            <div class="modal-header">
-                <h2><span class="material-icons-round">event_repeat</span> Automation</h2>
-                <button class="btn-icon" onclick="closeModal('automation-modal')">
-                    <span class="material-icons-round">close</span>
-                </button>
-            </div>
-
-            <!-- Toolbar -->
-            <div class="automation-modal-toolbar">
-                <div class="automation-status-row" id="automation-status-row">
-                    <span class="material-icons-round spin" style="font-size:16px">progress_activity</span>
-                    <span id="automation-status-text">Loading...</span>
-                </div>
-                <div style="display:flex; gap:8px; align-items:center">
-                    <button class="btn-secondary btn-sm" id="btn-auto-clear-completed" onclick="clearCompletedJobs()"
-                        style="display:none">
-                        <span class="material-icons-round"
-                            style="font-size:15px;vertical-align:middle">delete_sweep</span>
-                        Clear Completed
+        <!-- Settings View (Dedicated Page) -->
+        <div id="settings-view" class="settings-view" style="display:none">
+            <header class="settings-header">
+                <div class="settings-header-left">
+                    <button class="settings-back-btn" onclick="closeSettingsView()" title="Back to Chat">
+                        <span class="material-icons-round">arrow_back</span>
                     </button>
-                    <button class="btn-primary btn-sm" onclick="openJobForm()">
-                        <span class="material-icons-round" style="font-size:15px;vertical-align:middle">add</span>
-                        New Job
-                    </button>
-                </div>
-            </div>
-
-            <div class="automation-tabs">
-                <button class="auto-tab active" data-tab="active" onclick="switchAutoTab('active')">
-                    <span class="material-icons-round">bolt</span> Active
-                </button>
-                <button class="auto-tab" data-tab="completed" onclick="switchAutoTab('completed')">
-                    <span class="material-icons-round">check_circle</span> Inactive
-                </button>
-            </div>
-
-            <div class="modal-body automation-modal-body">
-                <!-- Job list -->
-                <div id="automation-job-list">
-                    <div class="automation-empty-state">
-                        <span class="material-icons-round">event_repeat</span>
-                        <p>No automation jobs yet.<br>Click <strong>New Job</strong> to create one.</p>
+                    <div>
+                        <h2>Settings</h2>
+                        <span class="settings-subtitle" id="settings-current-tab-title">Agent</span>
                     </div>
                 </div>
-
-                <!-- Inline form (hidden by default) -->
-                <div id="automation-job-form" class="automation-job-form" style="display:none">
-                    <div class="automation-form-header">
-                        <span id="automation-form-title">New Job</span>
-                        <button class="btn-icon" onclick="closeJobForm()">
-                            <span class="material-icons-round">close</span>
-                        </button>
-                    </div>
-
-                    <div class="automation-form-body">
-                        <div class="field-row">
-                            <label>Name</label>
-                            <input type="text" id="ajf-name" class="form-input" placeholder="e.g. Daily Report">
-                        </div>
-
-                        <div class="field-row field-row-stack">
-                            <label>Message to agent</label>
-                            <p class="settings-note">What should the agent do when this job runs?</p>
-                            <textarea id="ajf-message" class="form-input" rows="3"
-                                placeholder="E.g. Check my latest emails and summarize them..."></textarea>
-                        </div>
-
-                        <!-- Schedule -->
-                        <div class="field-row">
-                            <label>Schedule</label>
-                            <select id="ajf-sched-kind" class="form-input" onchange="onSchedKindChange()">
-                                <option value="every">Every N minutes</option>
-                                <option value="cron">Cron expression</option>
-                                <option value="at">One-shot (specific datetime)</option>
-                            </select>
-                        </div>
-                        <div id="ajf-sched-every" class="field-row">
-                            <label>Interval (min)</label>
-                            <input type="number" id="ajf-every-min" class="form-input" value="30" min="1">
-                        </div>
-                        <div id="ajf-sched-cron" class="field-row" style="display:none">
-                            <label>Cron expr</label>
-                            <input type="text" id="ajf-cron-expr" class="form-input" placeholder="0 9 * * 1-5">
-                        </div>
-                        <div id="ajf-tz-row" class="field-row" style="display:none">
-                            <label>Timezone</label>
-                            <input type="text" id="ajf-tz" class="form-input" placeholder="Europe/Rome (optional)">
-                        </div>
-                        <div id="ajf-sched-at" class="field-row" style="display:none">
-                            <label>Run at</label>
-                            <input type="datetime-local" id="ajf-at-dt" class="form-input">
-                        </div>
-
-                        <details style="margin-top: 24px;">
-                            <summary
-                                style="cursor: pointer; color: var(--text-muted); font-size: 13px; user-select: none; font-weight: 500;">
-                                Advanced Options</summary>
-                            <div
-                                style="margin-top: 16px; padding: 16px; background: rgba(0,0,0,0.15); border-radius: 8px; border: 1px solid var(--border-color);">
-                                <!-- Delivery -->
-                                <div class="field-row">
-                                    <label>Deliver result</label>
-                                    <label class="toggle">
-                                        <input type="checkbox" id="ajf-deliver" onchange="onDeliverChange()">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                                <div id="ajf-delivery-fields" style="display:none">
-                                    <div class="field-row">
-                                        <label>Channel</label>
-                                        <select id="ajf-channel" class="form-input">
-                                            <option value="">Auto-detect</option>
-                                            <option value="webui">Web UI</option>
-                                            <option value="telegram">Telegram</option>
-                                            <option value="discord">Discord</option>
-                                            <option value="slack">Slack</option>
-                                        </select>
-                                    </div>
-                                    <div class="field-row">
-                                        <label>Target ID</label>
-                                        <input type="text" id="ajf-target-id" class="form-input"
-                                            placeholder="chat_id / channel">
-                                    </div>
-                                </div>
-
-                                <!-- Other Advanced -->
-                                <div class="field-row">
-                                    <label>Session key</label>
-                                    <input type="text" id="ajf-session-key" class="form-input" placeholder="(auto)">
-                                </div>
-                                <div class="field-row">
-                                    <label>Agent profile</label>
-                                    <select id="ajf-profile" class="form-input">
-                                        <option value="">Default</option>
-                                    </select>
-                                </div>
-                                <div class="field-row">
-                                    <label>Delete after run</label>
-                                    <label class="toggle">
-                                        <input type="checkbox" id="ajf-delete-after">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                                <div class="field-row">
-                                    <label>Enabled</label>
-                                    <label class="toggle">
-                                        <input type="checkbox" id="ajf-enabled" checked>
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-                        </details>
-                    </div>
-
-                    <div class="automation-form-footer">
-                        <button class="btn-secondary" onclick="closeJobForm()">Cancel</button>
-                        <button class="btn-primary" id="ajf-save-btn" onclick="saveJobForm()">
-                            <span class="material-icons-round" style="font-size:15px;vertical-align:middle">save</span>
-                            Save
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="modal-footer" id="automation-job-form-footer" style="display:none">
-                <button class="btn-secondary" onclick="closeJobForm()">Cancel</button>
-                <button class="btn-primary" id="ajf-save-btn-footer" onclick="saveJobForm()">
-                    <span class="material-icons-round" style="font-size:15px;vertical-align:middle">save</span>
-                    Save
+                <button class="btn-primary" onclick="saveSettings()">
+                    <span class="material-icons-round" style="font-size:1rem;vertical-align:middle">save</span> Save Changes
                 </button>
-            </div>
-        </div>
-    </div>
-    <!-- ══ / Automation Modal ════════════════════════════════════════ -->
+            </header>
 
-    <!-- Settings Modal -->
-    <div id="settings-modal" class="modal-backdrop">
-        <div class="modal modal-settings">
-            <div class="modal-header">
-                <h2><span class="material-icons-round">settings</span> Settings</h2>
-                <button class="btn-icon" onclick="closeModal('settings-modal')">
-                    <span class="material-icons-round">close</span>
-                </button>
-            </div>
             <div class="settings-layout">
                 <!-- Vertical sidebar nav -->
                 <nav class="settings-sidebar" id="settings-sidebar">
@@ -537,8 +362,100 @@
                         <span class="material-icons-round">system_update</span><span>Update</span>
                     </button>
                 </nav>
+
+                <!-- Mobile category list dashboard -->
+                <div class="settings-mobile-dashboard" id="settings-mobile-dashboard">
+                    <div class="mobile-dashboard-grid">
+                        <button class="dashboard-card" onclick="switchSettingsTab('agent')">
+                            <span class="material-icons-round dash-icon">smart_toy</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Agent</div>
+                                <div class="dash-desc">Workspace, default model, thought settings</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('providers')">
+                            <span class="material-icons-round dash-icon">key</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Provider</div>
+                                <div class="dash-desc">Configure API keys & endpoints</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('oauth')">
+                            <span class="material-icons-round dash-icon">lock_open</span>
+                            <div class="dash-content">
+                                <div class="dash-title">OAuth</div>
+                                <div class="dash-desc">Link OpenRouter, GitHub, etc.</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('audio')">
+                            <span class="material-icons-round dash-icon">mic</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Voice & Audio</div>
+                                <div class="dash-desc">Speech to text & audio settings</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('tools')">
+                            <span class="material-icons-round dash-icon">build</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Tools</div>
+                                <div class="dash-desc">Web search, proxy & execution options</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('mcp')">
+                            <span class="material-icons-round dash-icon">hub</span>
+                            <div class="dash-content">
+                                <div class="dash-title">MCP</div>
+                                <div class="dash-desc">Model Context Protocol servers</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('gateway')">
+                            <span class="material-icons-round dash-icon">dns</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Gateway</div>
+                                <div class="dash-desc">Server port, host & connection settings</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('channels')">
+                            <span class="material-icons-round dash-icon">forum</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Channels</div>
+                                <div class="dash-desc">Progress reporting & notifications</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('skills')">
+                            <span class="material-icons-round dash-icon">menu_book</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Skills</div>
+                                <div class="dash-desc">Browse, pin & import workspace skills</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                        <button class="dashboard-card" onclick="switchSettingsTab('update')">
+                            <span class="material-icons-round dash-icon">system_update</span>
+                            <div class="dash-content">
+                                <div class="dash-title">Update</div>
+                                <div class="dash-desc">Check for updates & onboard wizard</div>
+                            </div>
+                            <span class="material-icons-round dash-arrow">chevron_right</span>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Content pane -->
                 <div class="settings-content" id="settings-body">
+                    <!-- Mobile detail header back button -->
+                    <button class="settings-mobile-back" id="settings-mobile-back" onclick="backToSettingsDashboard()">
+                        <span class="material-icons-round">arrow_back</span> Back to settings list
+                    </button>
+
                     <!-- Loading spinner -->
                     <div id="settings-loading" class="settings-loader">
                         <span class="material-icons-round spin">progress_activity</span>
@@ -833,10 +750,185 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button class="btn-primary" onclick="saveSettings()">
-                    <span class="material-icons-round" style="font-size:1rem;vertical-align:middle">save</span> Save
-                    Changes
+        </div>
+    </div>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+    <!-- ── Modals ────────────────────────────────────────────── -->
+
+    <!-- ══ Automation Modal ══════════════════════════════════════════ -->
+    <div id="automation-modal" class="modal-backdrop">
+        <div class="modal modal-automation">
+            <div class="modal-header">
+                <h2><span class="material-icons-round">event_repeat</span> Automation</h2>
+                <button class="btn-icon" onclick="closeModal('automation-modal')">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="automation-modal-toolbar">
+                <div class="automation-status-row" id="automation-status-row">
+                    <span class="material-icons-round spin" style="font-size:16px">progress_activity</span>
+                    <span id="automation-status-text">Loading...</span>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center">
+                    <button class="btn-secondary btn-sm" id="btn-auto-clear-completed" onclick="clearCompletedJobs()"
+                        style="display:none">
+                        <span class="material-icons-round"
+                            style="font-size:15px;vertical-align:middle">delete_sweep</span>
+                        Clear Completed
+                    </button>
+                    <button class="btn-primary btn-sm" onclick="openJobForm()">
+                        <span class="material-icons-round" style="font-size:15px;vertical-align:middle">add</span>
+                        New Job
+                    </button>
+                </div>
+            </div>
+
+            <div class="automation-tabs">
+                <button class="auto-tab active" data-tab="active" onclick="switchAutoTab('active')">
+                    <span class="material-icons-round">bolt</span> Active
+                </button>
+                <button class="auto-tab" data-tab="completed" onclick="switchAutoTab('completed')">
+                    <span class="material-icons-round">check_circle</span> Inactive
+                </button>
+            </div>
+
+            <div class="modal-body automation-modal-body">
+                <!-- Job list -->
+                <div id="automation-job-list">
+                    <div class="automation-empty-state">
+                        <span class="material-icons-round">event_repeat</span>
+                        <p>No automation jobs yet.<br>Click <strong>New Job</strong> to create one.</p>
+                    </div>
+                </div>
+
+                <!-- Inline form (hidden by default) -->
+                <div id="automation-job-form" class="automation-job-form" style="display:none">
+                    <div class="automation-form-header">
+                        <span id="automation-form-title">New Job</span>
+                        <button class="btn-icon" onclick="closeJobForm()">
+                            <span class="material-icons-round">close</span>
+                        </button>
+                    </div>
+
+                    <div class="automation-form-body">
+                        <div class="field-row">
+                            <label>Name</label>
+                            <input type="text" id="ajf-name" class="form-input" placeholder="e.g. Daily Report">
+                        </div>
+
+                        <div class="field-row field-row-stack">
+                            <label>Message to agent</label>
+                            <p class="settings-note">What should the agent do when this job runs?</p>
+                            <textarea id="ajf-message" class="form-input" rows="3"
+                                placeholder="E.g. Check my latest emails and summarize them..."></textarea>
+                        </div>
+
+                        <!-- Schedule -->
+                        <div class="field-row">
+                            <label>Schedule</label>
+                            <select id="ajf-sched-kind" class="form-input" onchange="onSchedKindChange()">
+                                <option value="every">Every N minutes</option>
+                                <option value="cron">Cron expression</option>
+                                <option value="at">One-shot (specific datetime)</option>
+                            </select>
+                        </div>
+                        <div id="ajf-sched-every" class="field-row">
+                            <label>Interval (min)</label>
+                            <input type="number" id="ajf-every-min" class="form-input" value="30" min="1">
+                        </div>
+                        <div id="ajf-sched-cron" class="field-row" style="display:none">
+                            <label>Cron expr</label>
+                            <input type="text" id="ajf-cron-expr" class="form-input" placeholder="0 9 * * 1-5">
+                        </div>
+                        <div id="ajf-tz-row" class="field-row" style="display:none">
+                            <label>Timezone</label>
+                            <input type="text" id="ajf-tz" class="form-input" placeholder="Europe/Rome (optional)">
+                        </div>
+                        <div id="ajf-sched-at" class="field-row" style="display:none">
+                            <label>Run at</label>
+                            <input type="datetime-local" id="ajf-at-dt" class="form-input">
+                        </div>
+
+                        <details style="margin-top: 24px;">
+                            <summary
+                                style="cursor: pointer; color: var(--text-muted); font-size: 13px; user-select: none; font-weight: 500;">
+                                Advanced Options</summary>
+                            <div
+                                style="margin-top: 16px; padding: 16px; background: rgba(0,0,0,0.15); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <!-- Delivery -->
+                                <div class="field-row">
+                                    <label>Deliver result</label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="ajf-deliver" onchange="onDeliverChange()">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div id="ajf-delivery-fields" style="display:none">
+                                    <div class="field-row">
+                                        <label>Channel</label>
+                                        <select id="ajf-channel" class="form-input">
+                                            <option value="">Auto-detect</option>
+                                            <option value="webui">Web UI</option>
+                                            <option value="telegram">Telegram</option>
+                                            <option value="discord">Discord</option>
+                                            <option value="slack">Slack</option>
+                                        </select>
+                                    </div>
+                                    <div class="field-row">
+                                        <label>Target ID</label>
+                                        <input type="text" id="ajf-target-id" class="form-input"
+                                            placeholder="chat_id / channel">
+                                    </div>
+                                </div>
+
+                                <!-- Other Advanced -->
+                                <div class="field-row">
+                                    <label>Session key</label>
+                                    <input type="text" id="ajf-session-key" class="form-input" placeholder="(auto)">
+                                </div>
+                                <div class="field-row">
+                                    <label>Agent profile</label>
+                                    <select id="ajf-profile" class="form-input">
+                                        <option value="">Default</option>
+                                    </select>
+                                </div>
+                                <div class="field-row">
+                                    <label>Delete after run</label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="ajf-delete-after">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="field-row">
+                                    <label>Enabled</label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="ajf-enabled" checked>
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="automation-form-footer">
+                        <button class="btn-secondary" onclick="closeJobForm()">Cancel</button>
+                        <button class="btn-primary" id="ajf-save-btn" onclick="saveJobForm()">
+                            <span class="material-icons-round" style="font-size:15px;vertical-align:middle">save</span>
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer" id="automation-job-form-footer" style="display:none">
+                <button class="btn-secondary" onclick="closeJobForm()">Cancel</button>
+                <button class="btn-primary" id="ajf-save-btn-footer" onclick="saveJobForm()">
+                    <span class="material-icons-round" style="font-size:15px;vertical-align:middle">save</span>
+                    Save
                 </button>
             </div>
         </div>

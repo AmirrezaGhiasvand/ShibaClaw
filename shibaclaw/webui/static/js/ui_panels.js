@@ -623,6 +623,7 @@ document.addEventListener("click", () => {
 });
 
 async function loadSession(sessionId) {
+    if (typeof closeSettingsView === "function") closeSettingsView();
     if (state.processing) {
         state.processing = false;
         setWorkingState(false);
@@ -873,6 +874,10 @@ async function loadSession(sessionId) {
 }
 
 window.openModal = async function (id) {
+    if (id === "settings-modal") {
+        window.openSettingsView();
+        return;
+    }
     const modal = $(id);
     if (!modal) return;
     modal.classList.add("active");
@@ -884,22 +889,6 @@ window.openModal = async function (id) {
     if (id === "context-modal") {
         state.contextModalOpen = true;
         await _loadContextModalContent();
-    } else if (id === "settings-modal") {
-        $("settings-loading").style.display = "flex";
-        document.querySelectorAll(".settings-panel").forEach(p => p.style.display = "none");
-        try {
-            const res = await authFetch("/api/settings");
-            const cfg = await res.json();
-            if (cfg.error) throw cfg.error;
-            window._shibaConfig = cfg;
-            populateSettings(cfg);
-            $("settings-loading").style.display = "none";
-            let startTab = "agent";
-            try { startTab = localStorage.getItem("shibaclaw_settings_tab") || "agent"; } catch (e) { }
-            switchSettingsTab(startTab);
-        } catch (e) {
-            $("settings-loading").innerHTML = `<span class="material-icons-round" style="color:var(--accent-red)">error</span> Failed to load settings`;
-        }
     } else if (id === "fs-modal") {
         await loadFs(state.currentFsPath || ".");
         if (state.fsOpenTarget) {
@@ -970,7 +959,8 @@ window.closeModal = function (id) {
         state.contextModalOpen = false;
     }
     if (id === "settings-modal") {
-        _clearOAuthPollsByPrefix("settings:");
+        window.closeSettingsView();
+        return;
     }
     if (id === "onboard-modal") {
         _clearOAuthPollsByPrefix("onboard:");
@@ -978,12 +968,70 @@ window.closeModal = function (id) {
     modal.classList.remove("active");
 };
 
+window.openSettingsView = async function () {
+    const chatArea = document.getElementById("chat-area");
+    const settingsView = document.getElementById("settings-view");
+    if (chatArea) chatArea.style.display = "none";
+    if (settingsView) settingsView.style.display = "flex";
+
+    if (typeof window.closeSidebarOnMobile === "function") {
+        window.closeSidebarOnMobile();
+    }
+
+    const loader = document.getElementById("settings-loading");
+    if (loader) loader.style.display = "flex";
+    document.querySelectorAll(".settings-panel").forEach(p => p.style.display = "none");
+    try {
+        const res = await authFetch("/api/settings");
+        const cfg = await res.json();
+        if (cfg.error) throw cfg.error;
+        window._shibaConfig = cfg;
+        populateSettings(cfg);
+        if (loader) loader.style.display = "none";
+        
+        let startTab = "agent";
+        try { startTab = localStorage.getItem("shibaclaw_settings_tab") || "agent"; } catch (e) { }
+        
+        const isMobile = window.matchMedia("(max-width: 768px)").matches;
+        if (isMobile) {
+            document.getElementById("settings-mobile-dashboard").style.display = "block";
+            document.getElementById("settings-body").style.display = "none";
+            document.getElementById("settings-sidebar").style.display = "none";
+            switchSettingsTab(startTab, { skipMobileDetailShow: true });
+        } else {
+            document.getElementById("settings-mobile-dashboard").style.display = "none";
+            document.getElementById("settings-body").style.display = "block";
+            document.getElementById("settings-sidebar").style.display = "flex";
+            switchSettingsTab(startTab);
+        }
+    } catch (e) {
+        if (loader) {
+            loader.innerHTML = `<span class="material-icons-round" style="color:var(--accent-red)">error</span> Failed to load settings`;
+        }
+    }
+};
+
+window.closeSettingsView = function () {
+    _clearOAuthPollsByPrefix("settings:");
+    const settingsView = document.getElementById("settings-view");
+    const chatArea = document.getElementById("chat-area");
+    if (settingsView) settingsView.style.display = "none";
+    if (chatArea) chatArea.style.display = "flex";
+};
+
+window.backToSettingsDashboard = function () {
+    document.getElementById("settings-mobile-dashboard").style.display = "block";
+    document.getElementById("settings-body").style.display = "none";
+    const subtitleEl = document.getElementById("settings-current-tab-title");
+    if (subtitleEl) subtitleEl.textContent = "Settings Dashboard";
+};
+
 window.openOnboardFromSettings = function () {
-    closeModal("settings-modal");
+    window.closeSettingsView();
     openOnboardWizard();
 };
 
-window.switchSettingsTab = function (tab) {
+window.switchSettingsTab = function (tab, options = {}) {
     document.querySelectorAll(".settings-sidebar-item").forEach(t => t.classList.remove("active"));
     const sidebarEl = document.querySelector(`.settings-sidebar-item[data-tab="${tab}"]`);
     if (sidebarEl) sidebarEl.classList.add("active");
@@ -999,6 +1047,27 @@ window.switchSettingsTab = function (tab) {
     if (tab === "skills") loadSkillsPanel();
     if (tab === "heartbeat") loadHeartbeatSettingsPanel();
     try { localStorage.setItem("shibaclaw_settings_tab", tab); } catch (e) { }
+
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    const subtitleEl = document.getElementById("settings-current-tab-title");
+    if (subtitleEl) {
+        const label = sidebarEl ? sidebarEl.querySelector("span:last-child")?.textContent || tab : tab;
+        subtitleEl.textContent = label;
+    }
+
+    if (isMobile) {
+        if (options.skipMobileDetailShow) {
+            document.getElementById("settings-mobile-dashboard").style.display = "block";
+            document.getElementById("settings-body").style.display = "none";
+        } else {
+            document.getElementById("settings-mobile-dashboard").style.display = "none";
+            document.getElementById("settings-body").style.display = "block";
+            document.getElementById("settings-body").scrollTop = 0;
+        }
+    } else {
+        document.getElementById("settings-mobile-dashboard").style.display = "none";
+        document.getElementById("settings-body").style.display = "block";
+    }
 };
 
 /* ── Skills panel ── */
@@ -1264,21 +1333,20 @@ async function loadOAuthPanel() {
                             badge.textContent = "Configured"; badge.className = "acc-badge on";
                             btn.disabled = false; btn.innerHTML = loginBtnHtml;
                             logsEl.innerHTML = `<div style="color:#4ade80;font-weight:600;text-align:center;padding:12px">✅ Authentication successful!</div>`;
-                            if (p.name === "openrouter") {
-                                try {
-                                    const settingsModal = document.getElementById("settings-modal");
-                                    if (settingsModal && settingsModal.classList.contains("active")) {
-                                        const settingsRes = await authFetch("/api/settings");
-                                        const settingsCfg = await settingsRes.json();
-                                        if (!settingsCfg.error) {
-                                            window._shibaConfig = settingsCfg;
-                                            populateSettings(settingsCfg);
-                                            _availableModels = []; // Clear model cache
-                                            switchSettingsTab("oauth");
-                                        }
+                            try {
+                                const settingsView = document.getElementById("settings-view");
+                                if (settingsView && settingsView.style.display !== "none") {
+                                    const settingsRes = await authFetch("/api/settings");
+                                    const settingsCfg = await settingsRes.json();
+                                    if (!settingsCfg.error) {
+                                        window._shibaConfig = settingsCfg;
+                                        populateSettings(settingsCfg);
+                                        _availableModels = []; // Clear model cache
+                                        switchSettingsTab("oauth");
                                     }
-                                } catch { /* silent */ }
-                            }
+                                }
+                                switchSettingsTab("oauth");
+                            } catch { /* silent */ }
                             return true;
                         }
                         if (job.status === "error") {
@@ -1937,8 +2005,7 @@ window.saveSettings = async function () {
             body: JSON.stringify(patch)
         });
         const data = await res.json();
-        if (!res.ok) throw data.error || "Save failed";
-        closeModal("settings-modal");
+        if (typeof closeSettingsView === "function") closeSettingsView();
         _availableModels = []; // Clear model cache to force refresh
         fetchStatus();
 
@@ -2254,10 +2321,12 @@ window.runUpdateAction = async function () {
             throw new Error(report.error || report.message || `HTTP ${res.status}`);
         }
 
-        const pipOutput = report.pip && report.pip.output ? escapeHtml(report.pip.output) : "";
+        const ok = (report.pip && report.pip.ok) || (report.exe && report.exe.ok);
+        const output = (report.pip && report.pip.output) || (report.exe && report.exe.output) || "";
+        const installerOutput = output ? escapeHtml(output) : "";
         const message = escapeHtml(report.message || "Update complete.");
-        const icon = report.pip && report.pip.ok ? "check_circle" : "error_outline";
-        const color = report.pip && report.pip.ok ? "var(--accent-green)" : "var(--accent-red)";
+        const icon = ok ? "check_circle" : "error_outline";
+        const color = ok ? "var(--accent-green)" : "var(--accent-red)";
         const footer = report.restarting
             ? '<div class="update-meta">Restarting ShibaClaw now...</div>'
             : '<div class="update-meta"><button class="btn-link" onclick="loadUpdatePanel(true)">Refresh status</button></div>';
@@ -2266,7 +2335,7 @@ window.runUpdateAction = async function () {
             <div class="update-available">
                 <span class="material-icons-round" style="font-size:48px;color:${color}">${icon}</span>
                 <div class="update-ok-text">${message}</div>
-                ${pipOutput ? `<div class="update-notes" style="margin-top:16px"><div class="update-notes-title"><span class="material-icons-round">terminal</span> Installer output</div><pre style="white-space:pre-wrap;margin:0;color:var(--text-secondary)">${pipOutput}</pre></div>` : ""}
+                ${installerOutput ? `<div class="update-notes" style="margin-top:16px"><div class="update-notes-title"><span class="material-icons-round">terminal</span> Installer output</div><pre style="white-space:pre-wrap;margin:0;color:var(--text-secondary)">${installerOutput}</pre></div>` : ""}
                 ${footer}
             </div>`;
     } catch (e) {

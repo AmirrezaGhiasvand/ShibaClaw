@@ -121,14 +121,14 @@ def _exe_upgrade(version: str, download_url: str, progress_cb: Callable[[int, in
             ])
             
         bat_content.extend([
-            "timeout /t 8 /nobreak",
+            "ping 127.0.0.1 -n 9 >nul",
             "set /a retry=0",
             ":loop",
             f'xcopy /S /Y /E /I "{extracted_exe_path}\\*" "{current_exe_dir}\\" >nul 2>&1',
             "if %errorlevel% neq 0 (",
             "    set /a retry+=1",
             "    if %retry% lss 15 (",
-            "        timeout /t 1 /nobreak >nul",
+            "        ping 127.0.0.1 -n 2 >nul",
             "        goto loop",
             "    )",
             ")",

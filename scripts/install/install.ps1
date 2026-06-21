@@ -137,7 +137,7 @@ if ($currentPath -notlike "*$shibaDir*") {
 
 Show-InstallProgress -Message "Creating shortcuts..." -Step 5 -Total 6
 
-$uninstallScript = Join-Path $installDir "uninstall.ps1"
+$uninstallScript = Join-Path $shibaDir "uninstall.ps1"
 
 # ── Write embedded uninstall script ──────────────────────────────────────────
 
@@ -151,6 +151,20 @@ param(
 $ErrorActionPreference = "Stop"
 
 $logPath = Join-Path $env:TEMP 'ShibaClaw-uninstall.log'
+
+$selfPath = $MyInvocation.MyCommand.Path
+if ($selfPath -and $selfPath -notlike "$env:TEMP\*") {
+    $tempScript = Join-Path $env:TEMP "shibaclaw_uninstall.ps1"
+    Copy-Item -Path $selfPath -Destination $tempScript -Force
+    $argsList = @("-File", $tempScript)
+    if ($Force) { $argsList += "-Force" }
+    if ($InstallDir) { $argsList += @("-InstallDir", $InstallDir) }
+    Start-Process -FilePath "powershell.exe" -ArgumentList $argsList -NoNewWindow
+    return
+}
+if ($selfPath -and $selfPath -like "$env:TEMP\*") {
+    Start-Sleep -Seconds 2
+}
 
 function Log-Message {
     param([string]$Message)
