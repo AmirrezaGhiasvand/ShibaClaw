@@ -1010,6 +1010,33 @@ async def gateway_command(
             except Exception:
                 _ws_clients.discard(ws)
 
+    async def _webui_outbound_notify(
+        session_key: str,
+        content: str,
+        media: list[str] | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        payload = {
+            "content": content,
+            "source": "agent",
+            "persist": False,
+            "msg_type": "response",
+        }
+        if media:
+            payload["media"] = media
+        if metadata:
+            payload["metadata"] = metadata
+        if _ws_clients:
+            await _broadcast_ws_event("session.notify", payload, session_key=session_key)
+        else:
+            await notify_webui_session(
+                session_key, content, auth_token,
+                source="agent", persist=False,
+                media=media, msg_type="response",
+            )
+
+    channels._notify_webui = _webui_outbound_notify
+
     async def run():
         _start_time = time.time()
         _ws_start_time = _start_time

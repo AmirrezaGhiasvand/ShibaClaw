@@ -30,6 +30,7 @@ class ChannelManager:
         self._dispatch_task: asyncio.Task | None = None
         self._channel_tasks: dict[str, asyncio.Task] = {}
         self._stop_event: asyncio.Event | None = None
+        self._notify_webui: Any | None = None
 
         self._init_channels()
 
@@ -277,17 +278,19 @@ class ChannelManager:
                                 )
                 else:
                     if msg.channel == "webui":
-                        try:
-                            from shibaclaw.webui.agent_manager import agent_manager
-                            await agent_manager.deliver_background_notification(
-                                session_key=f"webui:{msg.chat_id}",
-                                content=msg.content,
-                                persist=False,  # Already saved in session by loop.py
-                                media=msg.media,
-                                metadata=msg.metadata,
-                            )
-                        except Exception as e:
-                            logger.error("Failed to push to WebUI: {}", e)
+                        session_key = msg.chat_id if msg.chat_id.startswith("webui:") else f"webui:{msg.chat_id}"
+                        if self._notify_webui:
+                            try:
+                                await self._notify_webui(
+                                    session_key=session_key,
+                                    content=msg.content,
+                                    media=msg.media,
+                                    metadata=msg.metadata,
+                                )
+                            except Exception as e:
+                                logger.error("Failed to push to WebUI: {}", e)
+                        else:
+                            logger.warning("WebUI outbound message dropped — no notify callback configured")
                     elif msg.channel != "system":
                         logger.warning("Unknown channel: {}", msg.channel)
 

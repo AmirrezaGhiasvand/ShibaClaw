@@ -493,14 +493,18 @@ class TelegramChannel(BaseChannel):
                     chat_id,
                 )
             elif len(valid_ids) > 1:
-                logger.error(
-                    "Invalid chat_id '%s'. Multiple allowed users, cannot auto-resolve.",
-                    original_chat_id,
+                raise ValueError(
+                    f"Cannot auto-resolve Telegram chat_id: "
+                    f"multiple allowed users ({len(valid_ids)}). "
+                    f"Specify a numeric chat_id explicitly."
                 )
-                return
             else:
-                logger.error("Invalid chat_id: %s", original_chat_id)
-                return
+                raise ValueError(
+                    f"Cannot auto-resolve Telegram chat_id from '{original_chat_id}'. "
+                    f"No numeric user IDs found in allow_from. "
+                    f"Ensure allow_from contains numeric Telegram user IDs, "
+                    f"or send a message to the bot first so it can learn the chat_id."
+                )
         else:
             try:
                 chat_id = int(original_chat_id)
