@@ -422,6 +422,7 @@ class ServerManager:
 
     def _run_in_thread(self) -> None:
         loop = asyncio.new_event_loop()
+        self.loop = loop
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(self._serve_with_startup_tasks())

@@ -13,6 +13,7 @@ All notable changes to this project are documented in this file.
 - **Windows Process Lock Handling** — Handled locked executables in `install.ps1` by checking and waiting up to 30 seconds for any running `ShibaClaw` processes to exit, force-terminating them as a fallback.
 - **Plugin Installation on Packaged EXE** — Prevented dynamic pip-based plugin installations and uninstallations in `plugins.py` when running from a packaged EXE, returning a clean error instead of failing.
 - **Duplicate Desktop GUI Spawns** — Configured `__main__.py` to block launching python modules (e.g. `-m pip`) when compiled by PyInstaller, printing a stderr message and exiting instead of spawning duplicate GUI windows.
+- **Desktop pywebview Freeze on Gateway Restart** — Resolved window freeze on plugin install/uninstall by waiting for the gateway to report a fully ready `"ok"` status before reloading the page, retrying configured port binding to prevent falling back to random ports, and thread-safely reconnecting the WebSocket gateway client.
 
 ## [0.7.2] - 2026-06-21
 

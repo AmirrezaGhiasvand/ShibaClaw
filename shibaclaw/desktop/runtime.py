@@ -217,6 +217,19 @@ class DesktopRuntime:
                     gateway_ws_port,
                 )
                 self._start_gateway_monitor()
+                from shibaclaw.webui.gateway_client import gateway_client
+                from shibaclaw.webui.auth import get_auth_token
+                import asyncio
+                token = get_auth_token() or ""
+                gateway_client.configure(gateway_host, gateway_ws_port, token)
+                loop = None
+                if self._server_mgr is not None:
+                    loop = getattr(self._server_mgr, "loop", None)
+                if loop and loop.is_running():
+                    async def _reconnect():
+                        await gateway_client.stop()
+                        await gateway_client.start()
+                    asyncio.run_coroutine_threadsafe(_reconnect(), loop)
                 return
             time.sleep(0.1)
 
@@ -231,10 +244,12 @@ class DesktopRuntime:
 
         configured_http = self.config.gateway.port
         configured_ws = self.config.gateway.ws_port
-        if is_tcp_port_available(gateway_host, configured_http) and is_tcp_port_available(
-            gateway_host, configured_ws
-        ):
-            return configured_http, configured_ws
+        for _ in range(15):
+            if is_tcp_port_available(gateway_host, configured_http) and is_tcp_port_available(
+                gateway_host, configured_ws
+            ):
+                return configured_http, configured_ws
+            time.sleep(0.1)
 
         fallback_http = find_free_tcp_port(gateway_host)
         fallback_ws = find_free_tcp_port(gateway_host, exclude={fallback_http})

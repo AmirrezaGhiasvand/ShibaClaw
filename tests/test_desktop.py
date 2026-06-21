@@ -352,7 +352,7 @@ class TestDesktopRuntime:
 
         with mock.patch(
             "shibaclaw.desktop.runtime.is_tcp_port_available",
-            side_effect=[False, False],
+            side_effect=[False] * 30,
         ), mock.patch(
             "shibaclaw.desktop.runtime.find_free_tcp_port",
             side_effect=[29999, 29998],

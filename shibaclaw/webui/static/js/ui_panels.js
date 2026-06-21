@@ -3474,8 +3474,12 @@ async function pollForServerRestart() {
         try {
             const h = await authFetch("/api/status?_t=" + Date.now());
             if (h.ok) {
-                clearInterval(interval);
-                window.location.reload();
+                const data = await h.json();
+                if (data.status === "ok") {
+                    clearInterval(interval);
+                    window.location.reload();
+                    return;
+                }
             }
         } catch (e) { }
         if (tries > 20) {

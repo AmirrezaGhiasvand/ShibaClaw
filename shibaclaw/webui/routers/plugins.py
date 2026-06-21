@@ -85,11 +85,17 @@ async def api_install_plugin(request: Request) -> JSONResponse:
     cmd = [sys.executable, "-m", "pip", "install", install_target]
     logger.info("Installing plugin: {}", " ".join(cmd))
     
+    import subprocess
+    extra_kwargs = {}
+    if sys.platform == "win32":
+        extra_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            **extra_kwargs
         )
         stdout, stderr = await proc.communicate()
         
@@ -109,7 +115,8 @@ async def api_install_plugin(request: Request) -> JSONResponse:
         async def _do_restart():
             await asyncio.sleep(1.5)
             if _restart_callback is not None:
-                _restart_callback()
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, _restart_callback)
             else:
                 _schedule_restart_outside_loop(delay=2.0)
                 _graceful_shutdown_server()
@@ -148,11 +155,17 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
     cmd = [sys.executable, "-m", "pip", "uninstall", "-y", package]
     logger.info("Uninstalling plugin: {}", " ".join(cmd))
     
+    import subprocess
+    extra_kwargs = {}
+    if sys.platform == "win32":
+        extra_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            **extra_kwargs
         )
         stdout, stderr = await proc.communicate()
         
@@ -172,7 +185,8 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
         async def _do_restart():
             await asyncio.sleep(1.5)
             if _restart_callback is not None:
-                _restart_callback()
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, _restart_callback)
             else:
                 _schedule_restart_outside_loop(delay=2.0)
                 _graceful_shutdown_server()
