@@ -72,9 +72,9 @@ async def test_api_install_plugin_success(client):
     mock_proc.communicate.return_value = (b"Successfully installed", b"")
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec, \
-         patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep, \
-         patch("shibaclaw.webui.routers.system._schedule_restart_outside_loop") as mock_schedule, \
-         patch("shibaclaw.webui.routers.system._graceful_shutdown_server") as mock_shutdown:
+         patch("asyncio.sleep", new_callable=AsyncMock), \
+         patch("shibaclaw.webui.routers.system._schedule_restart_outside_loop"), \
+         patch("shibaclaw.webui.routers.system._graceful_shutdown_server"):
         response = client.post("/api/plugins/install", json={"package": "shibaclaw-tts-supertonic"})
         assert response.status_code == 200
         data = response.json()
@@ -96,9 +96,9 @@ async def test_api_uninstall_plugin_success(client):
     mock_proc.communicate.return_value = (b"Successfully uninstalled", b"")
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec, \
-         patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep, \
-         patch("shibaclaw.webui.routers.system._schedule_restart_outside_loop") as mock_schedule, \
-         patch("shibaclaw.webui.routers.system._graceful_shutdown_server") as mock_shutdown:
+         patch("asyncio.sleep", new_callable=AsyncMock), \
+         patch("shibaclaw.webui.routers.system._schedule_restart_outside_loop"), \
+         patch("shibaclaw.webui.routers.system._graceful_shutdown_server"):
         response = client.post("/api/plugins/uninstall", json={"package": "shibaclaw-tts-supertonic"})
         assert response.status_code == 200
         data = response.json()
