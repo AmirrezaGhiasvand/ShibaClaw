@@ -68,7 +68,12 @@ async def api_install_plugin(request: Request) -> JSONResponse:
 
     from pathlib import Path
     local_path = Path(__file__).resolve().parent.parent.parent.parent / package
-    install_target = str(local_path) if local_path.is_dir() else package
+    if local_path.is_dir():
+        install_target = str(local_path)
+    else:
+        from shibaclaw import __version__
+        tag = f"v{__version__}" if __version__ != "dev" else "main"
+        install_target = f"git+https://github.com/RikyZ90/ShibaClaw.git@{tag}#subdirectory={package}"
 
     cmd = [sys.executable, "-m", "pip", "install", install_target]
     logger.info("Installing plugin: {}", " ".join(cmd))
