@@ -50,10 +50,15 @@ def main() -> None:
         print("desktop-deps-ok")
         sys.exit(0)
 
-    if len(sys.argv) >= 3 and sys.argv[1] == "-m" and sys.argv[2] == "shibaclaw":
-        from shibaclaw.cli.commands import app
-        sys.argv = [sys.argv[0]] + sys.argv[3:]
-        sys.exit(app())
+    if len(sys.argv) >= 2 and sys.argv[1] == "-m":
+        if len(sys.argv) >= 3 and sys.argv[2] == "shibaclaw":
+            from shibaclaw.cli.commands import app
+            sys.argv = [sys.argv[0]] + sys.argv[3:]
+            sys.exit(app())
+        else:
+            module_name = sys.argv[2] if len(sys.argv) >= 3 else "unknown"
+            print(f"Error: Python module '{module_name}' is not supported in the packaged standalone executable.", file=sys.stderr)
+            sys.exit(1)
     elif len(sys.argv) >= 2 and sys.argv[1] == "gateway":
         from shibaclaw.cli.commands import app
         sys.argv = [sys.argv[0]] + sys.argv[1:]

@@ -54,6 +54,13 @@ async def api_list_plugins(request: Request) -> JSONResponse:
     })
 
 async def api_install_plugin(request: Request) -> JSONResponse:
+    from shibaclaw.helpers.system import is_running_as_exe
+    if is_running_as_exe():
+        return JSONResponse({
+            "ok": False,
+            "error": "Plugin installation is not supported in the packaged .exe version. Please run ShibaClaw from a Python environment (pip/source) to install plugins."
+        }, status_code=400)
+
     try:
         body = await request.json()
     except Exception:
@@ -119,6 +126,13 @@ async def api_install_plugin(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 async def api_uninstall_plugin(request: Request) -> JSONResponse:
+    from shibaclaw.helpers.system import is_running_as_exe
+    if is_running_as_exe():
+        return JSONResponse({
+            "ok": False,
+            "error": "Plugin uninstallation is not supported in the packaged .exe version. Please run ShibaClaw from a Python environment (pip/source) to uninstall plugins."
+        }, status_code=400)
+
     try:
         body = await request.json()
     except Exception:
