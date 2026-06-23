@@ -143,7 +143,7 @@ async def test_ws_handler_steering_fallback():
 
     mock_request = AsyncMock(return_value={"injected": False})
 
-    with patch("shibaclaw.webui.ws_handler._emit_to_session", AsyncMock()) as mock_emit, \
+    with patch("shibaclaw.webui.ws_handler._emit_to_session", AsyncMock()), \
          patch.object(gateway_client, "request", mock_request):
 
         await _handle_user_message("ws1", ws1, {"content": "Normal comment", "id": "msg2"})
