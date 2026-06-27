@@ -22,11 +22,9 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.7.4</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.7.5</b> — Click to see what's new</summary>
 
-- **Agent Steering Mode** — Guide or steer the agent dynamically during its execution loop. The WebUI no longer blocks user input when the agent is working; instead, you can send new guidance messages that are safely injected into the active agent loop context.
-- **MCP Lazy Tool Loading** — Optimized MCP server connections using a lazy loading/discovery strategy, significantly reducing token context overhead.
-- **Steering Icon Visuals** — Adapted the send button icon and tooltips to dynamically reflect the steering state.
+- **WhatsApp Integration Decoupled** — Moved the WhatsApp channel to a separate, installable plugin (`shibaclaw-channel-whatsapp`) to reduce core dependencies and allow independent updates.
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 

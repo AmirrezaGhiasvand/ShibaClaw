@@ -1,6 +1,7 @@
-# Changelog
+## [0.7.5] - 2026-06-27
 
-All notable changes to this project are documented in this file.
+### Changed
+- **WhatsApp Integration** — Decoupled the WhatsApp channel from the core framework and moved it to a separate, installable plugin (`shibaclaw-channel-whatsapp`) to reduce core dependencies and allow independent updates.
 
 ## [0.7.4] - 2026-06-23
 
