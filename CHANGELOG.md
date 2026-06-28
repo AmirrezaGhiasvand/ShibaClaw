@@ -1,3 +1,8 @@
+## [0.7.6] - 2026-06-28
+
+### Fixed
+- **Windows Updater Safety & UI Progress** — Hardened the Windows update mechanism against process lock race conditions and destructive folder deletions, forced TLS 1.2+ compatibility, and enabled real-time update download progress bars in the WebUI.
+
 ## [0.7.5] - 2026-06-27
 
 ### Changed

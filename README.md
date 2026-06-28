@@ -22,9 +22,9 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.7.5</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.7.6</b> — Click to see what's new</summary>
 
-- **WhatsApp Integration Decoupled** — Moved the WhatsApp channel to a separate, installable plugin (`shibaclaw-channel-whatsapp`) to reduce core dependencies and allow independent updates.
+- **Windows Updater Safety & UI Progress** — Hardened the Windows update mechanism against process lock race conditions and destructive folder deletions, forced TLS 1.2+ compatibility, and enabled real-time update download progress bars in the WebUI.
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 
