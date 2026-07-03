@@ -1,3 +1,11 @@
+## [0.7.8] - 2026-07-03
+
+### Added
+- **NVIDIA Provider Support** — Added NVIDIA as a supported LLM provider, expanding available model options.
+
+### Fixed
+- **Updater Relaunch Reliability** — Improved Windows updater install directory detection and relaunch handling so EXE updates recover more reliably after installation.
+
 ## [0.7.7] - 2026-07-03
 
 ### Fixed
