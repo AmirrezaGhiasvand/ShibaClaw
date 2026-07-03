@@ -852,7 +852,7 @@
         <div class="modal modal-automation">
             <div class="modal-header">
                 <h2><span class="material-icons-round">event_repeat</span> Automation</h2>
-                <button class="btn-icon" onclick="closeModal('automation-modal')">
+                <button class="btn-icon" aria-label="Close" title="Close" onclick="closeModal('automation-modal')">
                     <span class="material-icons-round">close</span>
                 </button>
             </div>
@@ -899,7 +899,7 @@
                 <div id="automation-job-form" class="automation-job-form" style="display:none">
                     <div class="automation-form-header">
                         <span id="automation-form-title">New Job</span>
-                        <button class="btn-icon" onclick="closeJobForm()">
+                        <button class="btn-icon" aria-label="Close" title="Close" onclick="closeJobForm()">
                             <span class="material-icons-round">close</span>
                         </button>
                     </div>
@@ -1029,7 +1029,7 @@
         <div class="modal large">
             <div class="modal-header">
                 <h2><span class="material-icons-round">psychology</span> Active Context</h2>
-                <button class="btn-icon" onclick="closeModal('context-modal')">
+                <button class="btn-icon" aria-label="Close" title="Close" onclick="closeModal('context-modal')">
                     <span class="material-icons-round">close</span>
                 </button>
             </div>
@@ -1050,7 +1050,7 @@
                     <span class="material-icons-round" style="font-size:16px;vertical-align:middle">open_in_new</span>
                     GitHub
                 </a>
-                <button class="btn-icon" onclick="closeModal('changelog-modal')">
+                <button class="btn-icon" aria-label="Close" title="Close" onclick="closeModal('changelog-modal')">
                     <span class="material-icons-round">close</span>
                 </button>
             </div>
@@ -1065,10 +1065,10 @@
         <div class="modal large">
             <div class="modal-header">
                 <h2><span class="material-icons-round">folder_open</span> File Explorer</h2>
-                <button class="btn-icon" onclick="loadFs(state.currentFsPath || '.')" title="Refresh">
+                <button class="btn-icon" aria-label="Refresh" onclick="loadFs(state.currentFsPath || '.')" title="Refresh">
                     <span class="material-icons-round">refresh</span>
                 </button>
-                <button class="btn-icon" onclick="closeModal('fs-modal')">
+                <button class="btn-icon" aria-label="Close" title="Close" onclick="closeModal('fs-modal')">
                     <span class="material-icons-round">close</span>
                 </button>
             </div>
@@ -1093,7 +1093,7 @@
         <div class="modal modal-onboard">
             <div class="modal-header">
                 <h2><span class="material-icons-round">rocket_launch</span> Welcome to ShibaClaw</h2>
-                <button class="btn-icon" onclick="closeModal('onboard-modal')" title="Close"><span
+                <button class="btn-icon" aria-label="Close" title="Close" onclick="closeModal('onboard-modal')"><span
                         class="material-icons-round">close</span></button>
             </div>
             <div class="ob-steps">
@@ -1125,7 +1125,7 @@
                         <div class="ob-key-wrap">
                             <input type="password" id="ob-api-key" class="form-input ob-key-input" placeholder="sk-..."
                                 autocomplete="off">
-                            <button class="ob-eye" id="ob-eye-toggle" type="button"><span
+                            <button class="ob-eye" id="ob-eye-toggle" type="button" aria-label="Toggle password visibility" title="Toggle password visibility"><span
                                     class="material-icons-round">visibility_off</span></button>
                         </div>
                         <p class="ob-hint" id="ob-key-hint"></p>
