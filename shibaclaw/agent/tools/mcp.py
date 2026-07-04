@@ -31,6 +31,54 @@ def get_mcp_servers_info() -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# OAuth helper
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_auth_headers(
+    server_name: str,
+    cfg: Any,  # MCPServerConfig
+) -> dict[str, str]:
+    """
+    Return the headers dict to use for this server, injecting a dynamic
+    ``Authorization: Bearer <token>`` when an OAuth config is present.
+
+    Falls back transparently to ``cfg.headers`` for non-OAuth servers,
+    preserving 100 % backward compatibility.
+    """
+    base_headers: dict[str, str] = dict(cfg.headers or {})
+
+    if cfg.oauth is None:
+        return base_headers
+
+    from shibaclaw.security.oauth_flow import OAuthFlow
+    from shibaclaw.security.oauth_store import OAuthTokenStore
+
+    store = OAuthTokenStore()
+    flow = OAuthFlow(store=store)
+
+    try:
+        token_data = await flow.get_valid_token(
+            server_name,
+            cfg.oauth,
+            callback_timeout=cfg.oauth.callback_timeout,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"MCP server '{server_name}': OAuth authentication failed: {exc}"
+        ) from exc
+
+    access_token = token_data.get("access_token", "")
+    # Dynamic Authorization header overrides any static one in cfg.headers
+    return {**base_headers, "Authorization": f"Bearer {access_token}"}
+
+
+# ---------------------------------------------------------------------------
+# Tool definitions
+# ---------------------------------------------------------------------------
+
+
 class MCPListTools(Tool):
     """List available tools on a connected MCP server."""
 
@@ -173,10 +221,21 @@ class MCPCallTool(Tool):
         return "\n".join(parts) or "(no output)"
 
 
+# ---------------------------------------------------------------------------
+# Connection bootstrap
+# ---------------------------------------------------------------------------
+
+
 async def connect_mcp_servers(
     mcp_servers: dict, registry: SkillVault, stack: AsyncExitStack
 ) -> None:
-    """Connect to configured MCP servers and register their sessions."""
+    """Connect to configured MCP servers and register their sessions.
+
+    For servers with an ``oauth`` block the function transparently runs the
+    OAuth 2.0 Authorization Code + PKCE flow (or refreshes a cached token)
+    before opening the transport, injecting the resulting Bearer token into
+    the request headers.
+    """
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.sse import sse_client
     from mcp.client.stdio import stdio_client
@@ -200,47 +259,64 @@ async def connect_mcp_servers(
                     continue
 
             if transport_type == "stdio":
+                # stdio servers don't use HTTP headers — OAuth not applicable
                 params = StdioServerParameters(
                     command=cfg.command, args=cfg.args, env=cfg.env or None
                 )
                 read, write = await stack.enter_async_context(stdio_client(params))
+
             elif transport_type == "sse":
+                # Resolve auth headers (may trigger OAuth flow for first-time connect)
+                auth_headers = await _resolve_auth_headers(name, cfg)
 
-                def httpx_client_factory(
-                    headers: dict[str, str] | None = None,
-                    timeout: httpx.Timeout | None = None,
-                    auth: httpx.Auth | None = None,
-                ) -> httpx.AsyncClient:
-                    from shibaclaw.security.network import validate_resolved_url
+                def _make_httpx_client_factory(
+                    resolved_headers: dict[str, str],
+                ) -> Any:
+                    """Capture resolved_headers in a closure for the SSE client factory."""
+                    def httpx_client_factory(
+                        headers: dict[str, str] | None = None,
+                        timeout: httpx.Timeout | None = None,
+                        auth: httpx.Auth | None = None,
+                    ) -> httpx.AsyncClient:
+                        from shibaclaw.security.network import validate_resolved_url
 
-                    async def _ssrf_hook(request: httpx.Request):
-                        redir_ok, redir_err = validate_resolved_url(str(request.url))
-                        if not redir_ok:
-                            raise httpx.RequestError(f"Redirect blocked: {redir_err}", request=request)
+                        async def _ssrf_hook(request: httpx.Request) -> None:
+                            redir_ok, redir_err = validate_resolved_url(str(request.url))
+                            if not redir_ok:
+                                raise httpx.RequestError(
+                                    f"Redirect blocked: {redir_err}", request=request
+                                )
 
-                    merged_headers = {**(cfg.headers or {}), **(headers or {})}
-                    return httpx.AsyncClient(
-                        headers=merged_headers or None,
-                        follow_redirects=True,
-                        timeout=timeout,
-                        auth=auth,
-                        event_hooks={"request": [_ssrf_hook]},
-                    )
+                        merged_headers = {**resolved_headers, **(headers or {})}
+                        return httpx.AsyncClient(
+                            headers=merged_headers or None,
+                            follow_redirects=True,
+                            timeout=timeout,
+                            auth=auth,
+                            event_hooks={"request": [_ssrf_hook]},
+                        )
+                    return httpx_client_factory
 
                 read, write = await stack.enter_async_context(
-                    sse_client(cfg.url, httpx_client_factory=httpx_client_factory)
+                    sse_client(cfg.url, httpx_client_factory=_make_httpx_client_factory(auth_headers))
                 )
+
             elif transport_type == "streamableHttp":
+                # Resolve auth headers (may trigger OAuth flow for first-time connect)
+                auth_headers = await _resolve_auth_headers(name, cfg)
+
                 from shibaclaw.security.network import validate_resolved_url
 
-                async def _ssrf_hook(request: httpx.Request):
+                async def _ssrf_hook(request: httpx.Request) -> None:
                     redir_ok, redir_err = validate_resolved_url(str(request.url))
                     if not redir_ok:
-                        raise httpx.RequestError(f"Redirect blocked: {redir_err}", request=request)
+                        raise httpx.RequestError(
+                            f"Redirect blocked: {redir_err}", request=request
+                        )
 
                 http_client = await stack.enter_async_context(
                     httpx.AsyncClient(
-                        headers=cfg.headers or None,
+                        headers=auth_headers or None,
                         follow_redirects=True,
                         timeout=None,
                         event_hooks={"request": [_ssrf_hook]},
@@ -249,6 +325,7 @@ async def connect_mcp_servers(
                 read, write, _ = await stack.enter_async_context(
                     streamable_http_client(cfg.url, http_client=http_client)
                 )
+
             else:
                 logger.warning("MCP server '{}': unknown transport type '{}'", name, transport_type)
                 continue
@@ -260,6 +337,7 @@ async def connect_mcp_servers(
             _mcp_configs[name] = cfg
             logger.info("MCP server '{}': connected and session registered", name)
             connected_any = True
+
         except Exception as e:
             logger.error("MCP server '{}': failed to connect: {}", name, e)
 

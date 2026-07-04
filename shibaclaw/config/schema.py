@@ -121,7 +121,7 @@ class ProvidersConfig(Base):
     moonshot: ProviderConfig = Field(default_factory=ProviderConfig)
     minimax: ProviderConfig = Field(default_factory=ProviderConfig)
     aihubmix: ProviderConfig = Field(default_factory=ProviderConfig)  # AiHubMix API gateway
-    siliconflow: ProviderConfig = Field(default_factory=ProviderConfig)  # SiliconFlow (硅基流动)
+    siliconflow: ProviderConfig = Field(default_factory=ProviderConfig)  # SiliconFlow (硬基流动)
     volcengine: ProviderConfig = Field(default_factory=ProviderConfig)  # VolcEngine (火山引擎)
     volcengine_coding_plan: ProviderConfig = Field(
         default_factory=ProviderConfig
@@ -154,7 +154,7 @@ class GatewayConfig(Base):
 
     host: str = "127.0.0.1"
     port: int = 19999
-    ws_port: int = 19998  # WebSocket port for realtime WebUI↔Gateway communication
+    ws_port: int = 19998  # WebSocket port for realtime WebUI↔︎Gateway communication
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
     rate_limit_per_minute: int = 0  # 0 = disabled; per-sender inbound message rate limit
 
@@ -202,6 +202,47 @@ class ExecToolConfig(Base):
     install_audit_block_severity: str = "high"  # Min severity to block: critical, high, medium, low
 
 
+class MCPOAuthConfig(Base):
+    """
+    OAuth 2.0 Authorization Code + PKCE configuration for a remote MCP server.
+
+    When present on an ``MCPServerConfig``, ShibaClaw will automatically drive
+    the browser-based authorisation flow on first connection and refresh the
+    access token transparently on subsequent starts.
+
+    Example config.json::
+
+        "mcp_servers": {
+          "notion": {
+            "type": "streamableHttp",
+            "url": "https://mcp.notion.com/mcp",
+            "oauth": {
+              "authUrl": "https://api.notion.com/v1/oauth/authorize",
+              "tokenUrl": "https://api.notion.com/v1/oauth/token",
+              "clientId": "<your-notion-integration-client-id>",
+              "scopes": ["read_content", "update_content"]
+            }
+          }
+        }
+    """
+
+    auth_url: str = Field(..., description="Provider\'s authorisation endpoint URL.")
+    token_url: str = Field(..., description="Provider\'s token exchange endpoint URL.")
+    client_id: str = Field(..., description="OAuth application client ID.")
+    client_secret: str | None = Field(
+        default=None,
+        description="Client secret (optional for PKCE-only public clients).",
+    )
+    scopes: list[str] = Field(
+        default_factory=list,
+        description="OAuth scopes to request (space-joined when sending to provider).",
+    )
+    callback_timeout: float = Field(
+        default=120.0,
+        description="Seconds to wait for the browser callback before aborting.",
+    )
+
+
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
 
@@ -210,7 +251,15 @@ class MCPServerConfig(Base):
     args: list[str] = Field(default_factory=list)  # Stdio: command arguments
     env: dict[str, str] = Field(default_factory=dict)  # Stdio: extra env vars
     url: str = ""  # HTTP/SSE: endpoint URL
-    headers: dict[str, str] = Field(default_factory=dict)  # HTTP/SSE: custom headers
+    headers: dict[str, str] = Field(default_factory=dict)  # HTTP/SSE: static custom headers
+    oauth: MCPOAuthConfig | None = Field(
+        default=None,
+        description=(
+            "Optional OAuth 2.0 PKCE config.  When set, ShibaClaw performs the browser-based "
+            "auth flow on first connection and injects a dynamic Bearer token into every request, "
+            "superseding any static Authorization header in `headers`."
+        ),
+    )
     tool_timeout: int = 30  # seconds before a tool call is cancelled
     enabled_tools: list[str] = Field(
         default_factory=lambda: ["*"]
