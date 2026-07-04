@@ -216,7 +216,15 @@ class DingTalkChannel(BaseChannel):
                 return
 
             self._running = True
-            self._http = httpx.AsyncClient()
+
+            from shibaclaw.security.network import validate_resolved_url
+
+            async def _ssrf_hook(request: httpx.Request) -> None:
+                redir_ok, redir_err = validate_resolved_url(str(request.url))
+                if not redir_ok:
+                    raise httpx.RequestError(f"Redirect blocked: {redir_err}", request=request)
+
+            self._http = httpx.AsyncClient(event_hooks={"request": [_ssrf_hook]})
 
             logger.info(
                 "Initializing DingTalk Stream Client with Client ID: {}...",
