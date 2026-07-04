@@ -22,10 +22,11 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.7.8</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.7.9</b> — Click to see what's new</summary>
 
-- **NVIDIA Provider Support** — Added NVIDIA as a supported LLM provider, expanding available model options.
-- **Updater Relaunch Reliability** — Improved Windows updater install directory detection and relaunch handling so EXE updates recover more reliably after installation.
+- **MCP Server Manager** — Added a full WebUI workflow to create, edit, test, and monitor MCP servers with environment-variable support and live status badges.
+- **OAuth 2.0 PKCE for MCP** — Added secure OAuth-based authentication for custom MCP HTTP endpoints through a local callback flow.
+- **Security & Reliability** — Hardened DingTalk SSRF handling and improved proxy/config loading for more resilient startup and execution.
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 

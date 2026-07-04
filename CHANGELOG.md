@@ -1,3 +1,21 @@
+## [0.7.9] - 2026-07-04
+
+### Added
+- **MCP Server Manager** — Added a dedicated WebUI workflow to create, edit, test, and monitor MCP servers, including environment variable support and live connection status badges.
+- **OAuth 2.0 PKCE for MCP** — Added secure OAuth-based authentication for custom MCP HTTP endpoints through a local callback flow.
+- **CLI & System Routing Improvements** — Expanded the CLI command structure and added gateway/WebUI detection utilities for smoother startup and routing.
+
+### Changed
+- **MCP Tool Guidance** — Improved MCP tool usage instructions and JSON parameter casting for more reliable server tool execution.
+- **Accessibility Polish** — Associated labels with inputs in settings and automation dialogs for better screen-reader support.
+
+### Fixed
+- **DingTalk SSRF Protection** — Hardened outbound URL validation in the DingTalk integration to block unsafe redirects.
+- **Proxy Loader Resilience** — Fixed handling of empty proxy objects in configuration loading.
+
+### Optimized
+- **Automation Task Resolution** — Reduced the computational cost of heartbeat task evaluation for faster background processing.
+
 ## [0.7.8] - 2026-07-03
 
 ### Added
