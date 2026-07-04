@@ -305,6 +305,23 @@ async def notify_webui_session(
     return False
 
 
+async def _cancel_all_tasks_gracefully() -> None:
+    """Cancel every running asyncio task except the current one and wait for them to finish.
+
+    This replaces the old ``call_later(0.5, lambda: [t.cancel() for t in all_tasks()])``
+    pattern which left tasks in a "destroyed but pending" state because:
+    - call_later schedules a sync callback — it cannot await the cancellation
+    - tasks whose coroutines were blocked in wait_for / shield never got a chance to
+      handle CancelledError before the event loop tore them down
+    """
+    current = asyncio.current_task()
+    tasks = [t for t in asyncio.all_tasks() if t is not current and not t.done()]
+    for t in tasks:
+        t.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def gateway_command(
     host: Optional[str] = None,
     port_override: Optional[int] = None,
@@ -582,6 +599,19 @@ async def gateway_command(
 
     _state = {"restart": False}
 
+    async def _trigger_restart() -> None:
+        """Schedule a graceful restart: cancel all tasks and let run() exit cleanly.
+
+        Previously this used ``call_later(0.5, lambda: [t.cancel() ...])``, which
+        is a sync callback and cannot await the cancellations.  Tasks blocked in
+        ``wait_for`` / ``Future`` were left in a pending state and destroyed by the
+        event loop, producing "Task was destroyed but it is pending!" warnings and
+        leaving MCP stdio sub-processes running (causing the observed slowness on
+        subsequent restarts).
+        """
+        await asyncio.sleep(0.1)  # yield so the HTTP/WS response is sent first
+        await _cancel_all_tasks_gracefully()
+
     async def _do_reload() -> None:
         """Hot-reload all components from the saved config file."""
         nonlocal config, provider
@@ -601,9 +631,7 @@ async def gateway_command(
                 "Hot-reload: gateway host/port changed — falling back to full restart"
             )
             _state["restart"] = True
-            asyncio.get_event_loop().call_later(
-                0.5, lambda: [t.cancel() for t in asyncio.all_tasks()]
-            )
+            asyncio.ensure_future(_trigger_restart())
             return
 
         try:
@@ -884,9 +912,7 @@ async def gateway_command(
             elif action == "restart":
                 await ws.send(_ok({"status": "restarting"}))
                 _state["restart"] = True
-                asyncio.get_event_loop().call_later(
-                    0.5, lambda: [t.cancel() for t in asyncio.all_tasks()]
-                )
+                asyncio.ensure_future(_trigger_restart())
 
             # --- Automation (new unified actions) ---
             elif action == "automation.list":
@@ -1126,10 +1152,9 @@ async def gateway_command(
                         writer.write(_json_response({"error": "unauthorized"}, 401))
                     else:
                         writer.write(_json_response({"status": "restarting"}))
+                        await writer.drain()
                         _state["restart"] = True
-                        asyncio.get_event_loop().call_later(
-                            0.5, lambda: [t.cancel() for t in asyncio.all_tasks()]
-                        )
+                        asyncio.ensure_future(_trigger_restart())
 
                 elif "POST" in request_line and "/reload" in request_line:
                     if not _check_auth():
@@ -1382,6 +1407,18 @@ async def gateway_command(
             else:
                 console.print("\nShutting down...")
         finally:
+            # Stop channel tasks first so _start_channel coroutines exit cleanly
+            # before stop_all() tries to call channel.stop() on them.
+            # This eliminates "Task was destroyed but it is pending!" warnings.
+            for name, task in list(channels._channel_tasks.items()):
+                if not task.done():
+                    task.cancel()
+            if channels._channel_tasks:
+                await asyncio.gather(
+                    *channels._channel_tasks.values(), return_exceptions=True
+                )
+            channels._channel_tasks.clear()
+
             try:
                 await agent.close_mcp()
             except asyncio.CancelledError:

@@ -75,6 +75,41 @@ async def _resolve_auth_headers(
 
 
 # ---------------------------------------------------------------------------
+# SSRF hook factory
+# ---------------------------------------------------------------------------
+
+
+def _make_ssrf_hook(origin_url: str):
+    """Return an httpx request hook that blocks SSRF redirects.
+
+    The ``origin_url`` is captured by value in the closure so that iterating
+    over multiple MCP servers in a loop never causes hooks to share state.
+    Only redirect targets that leave the origin are validated; the original
+    configured URL is always trusted (it may be localhost).
+    """
+    from shibaclaw.security.network import validate_resolved_url
+
+    _origin = origin_url.rstrip("/")
+
+    async def _ssrf_hook(request: httpx.Request) -> None:
+        req_url = str(request.url).rstrip("/")
+        # Allow requests that stay on the configured origin
+        if (
+            req_url == _origin
+            or req_url.startswith(_origin + "/")
+            or req_url.startswith(_origin + "?")
+        ):
+            return
+        redir_ok, redir_err = validate_resolved_url(req_url)
+        if not redir_ok:
+            raise httpx.RequestError(
+                f"Redirect blocked: {redir_err}", request=request
+            )
+
+    return _ssrf_hook
+
+
+# ---------------------------------------------------------------------------
 # Tool definitions
 # ---------------------------------------------------------------------------
 
@@ -266,43 +301,27 @@ async def connect_mcp_servers(
                 read, write = await stack.enter_async_context(stdio_client(params))
 
             elif transport_type == "sse":
-                # Resolve auth headers (may trigger OAuth flow for first-time connect)
                 auth_headers = await _resolve_auth_headers(name, cfg)
 
                 def _make_httpx_client_factory(
                     resolved_headers: dict[str, str],
                     origin_url: str,
                 ) -> Any:
-                    """Capture resolved_headers in a closure for the SSE client factory."""
-                    _origin = origin_url.rstrip("/")
+                    """Capture resolved_headers and origin_url in a closure for the SSE client factory."""
+                    _ssrf = _make_ssrf_hook(origin_url)
 
                     def httpx_client_factory(
                         headers: dict[str, str] | None = None,
                         timeout: httpx.Timeout | None = None,
                         auth: httpx.Auth | None = None,
                     ) -> httpx.AsyncClient:
-                        from shibaclaw.security.network import validate_resolved_url
-
-                        async def _ssrf_hook(request: httpx.Request) -> None:
-                            # Only validate redirect targets, not the
-                            # original configured MCP server URL which
-                            # the user explicitly trusts (may be localhost).
-                            req_url = str(request.url).rstrip("/")
-                            if req_url == _origin or req_url.startswith(_origin + "/") or req_url.startswith(_origin + "?"):
-                                return
-                            redir_ok, redir_err = validate_resolved_url(req_url)
-                            if not redir_ok:
-                                raise httpx.RequestError(
-                                    f"Redirect blocked: {redir_err}", request=request
-                                )
-
                         merged_headers = {**resolved_headers, **(headers or {})}
                         return httpx.AsyncClient(
                             headers=merged_headers or None,
                             follow_redirects=True,
                             timeout=timeout,
                             auth=auth,
-                            event_hooks={"request": [_ssrf_hook]},
+                            event_hooks={"request": [_ssrf]},
                         )
                     return httpx_client_factory
 
@@ -311,32 +330,15 @@ async def connect_mcp_servers(
                 )
 
             elif transport_type == "streamableHttp":
-                # Resolve auth headers (may trigger OAuth flow for first-time connect)
                 auth_headers = await _resolve_auth_headers(name, cfg)
 
-                from shibaclaw.security.network import validate_resolved_url
-
-                _origin_url = cfg.url.rstrip("/")
-
-                async def _ssrf_hook(request: httpx.Request) -> None:
-                    # Only validate redirect targets, not the original
-                    # configured MCP server URL which the user explicitly
-                    # trusts (may be localhost).
-                    req_url = str(request.url).rstrip("/")
-                    if req_url == _origin_url or req_url.startswith(_origin_url + "/") or req_url.startswith(_origin_url + "?"):
-                        return
-                    redir_ok, redir_err = validate_resolved_url(req_url)
-                    if not redir_ok:
-                        raise httpx.RequestError(
-                            f"Redirect blocked: {redir_err}", request=request
-                        )
-
+                # _make_ssrf_hook captures cfg.url by value — safe across loop iterations
                 http_client = await stack.enter_async_context(
                     httpx.AsyncClient(
                         headers=auth_headers or None,
                         follow_redirects=True,
                         timeout=None,
-                        event_hooks={"request": [_ssrf_hook]},
+                        event_hooks={"request": [_make_ssrf_hook(cfg.url)]},
                     )
                 )
                 read, write, _ = await stack.enter_async_context(

@@ -1,0 +1,326 @@
+/* Connected Apps — card grid styles */
+
+/* ── layout ────────────────────────────────────────────────────── */
+#connected-apps-container {
+  padding: 16px 20px;
+  max-width: 900px;
+}
+
+.ca-loading {
+  color: var(--text-secondary, #888);
+  padding: 24px 0;
+}
+
+.ca-header { margin-bottom: 16px; }
+.ca-header__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ca-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.ca-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #888);
+  margin: 0;
+}
+
+/* ── warning banner ─────────────────────────────────────── */
+.ca-warning-box {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(234,179,8,.12);
+  border: 1px solid rgba(234,179,8,.35);
+  color: #ca8a04;
+  font-size: 0.82rem;
+}
+
+/* ── backend toggle button ───────────────────────────────── */
+.ca-backend-toggle {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border, rgba(255,255,255,.15));
+  background: var(--surface-2, rgba(255,255,255,.06));
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.ca-backend-toggle:hover {
+  background: var(--surface-3, rgba(255,255,255,.1));
+  color: var(--text-primary, #eee);
+}
+/* ✓ configured state — subtle green pill */
+.ca-backend-toggle--ok {
+  border-color: rgba(34,197,94,.45);
+  background: rgba(34,197,94,.1);
+  color: #4ade80;
+}
+.ca-backend-toggle--ok:hover {
+  background: rgba(34,197,94,.18);
+  color: #86efac;
+}
+
+/* ── backend form ─────────────────────────────────────────── */
+.ca-backend-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255,255,255,.04));
+  border: 1px solid var(--border, rgba(255,255,255,.1));
+}
+.ca-backend-form h4 { margin: 0 0 8px; font-size: 0.95rem; }
+.ca-backend-form small { color: var(--text-secondary, #888); }
+.ca-hint { font-size: 0.8rem; color: var(--text-secondary, #888); margin: 0 0 14px; }
+.ca-hint-inline { font-size: 0.78rem; color: var(--text-secondary, #888); }
+.ca-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.ca-form-group label { font-size: 0.82rem; font-weight: 500; }
+.ca-form-group input {
+  padding: 6px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border, rgba(255,255,255,.15));
+  background: var(--input-bg, rgba(0,0,0,.25));
+  color: inherit;
+  font-size: 0.85rem;
+}
+.ca-form-group input:focus {
+  outline: none;
+  border-color: var(--accent, #c97c2a);
+}
+
+/* ── group / grid ───────────────────────────────────────────── */
+.ca-groups { display: flex; flex-direction: column; gap: 24px; }
+
+.ca-group__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-secondary, #aaa);
+  margin: 0 0 10px;
+}
+
+.ca-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+/* ── card ─────────────────────────────────────────────────────────────────── */
+.ca-card {
+  --ca-accent: #888;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255,255,255,.1));
+  background: var(--surface-2, rgba(255,255,255,.04));
+  overflow: hidden;
+  transition: border-color .15s, box-shadow .15s;
+}
+.ca-card:hover {
+  border-color: var(--ca-accent);
+  box-shadow: 0 0 0 1px var(--ca-accent);
+}
+.ca-card--connected {
+  border-color: rgba(34,197,94,.4);
+}
+
+.ca-card__icon-wrap {
+  background: var(--ca-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  opacity: .85;
+}
+
+.ca-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  flex: 1;
+}
+
+.ca-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ca-card__name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ca-card__desc {
+  font-size: 0.76rem;
+  color: var(--text-secondary, #888);
+  margin: 0;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.ca-card__actions {
+  margin-top: 6px;
+}
+
+/* ── card action buttons — dark-friendly overrides ────────────────── */
+.ca-card__btn {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  font-weight: 500;
+}
+/* Connect — accent-coloured outline */
+.ca-card__btn--connect {
+  background: transparent;
+  border: 1px solid var(--ca-accent);
+  color: var(--ca-accent);
+}
+.ca-card__btn--connect:hover {
+  background: var(--ca-accent);
+  color: #fff;
+}
+/* Disconnect — subtle red outline */
+.ca-card__btn--disconnect {
+  background: transparent;
+  border: 1px solid rgba(239,68,68,.5);
+  color: #f87171;
+}
+.ca-card__btn--disconnect:hover {
+  background: rgba(239,68,68,.15);
+  border-color: #f87171;
+}
+/* Reconnect — muted secondary */
+.ca-card__btn--reconnect {
+  background: transparent;
+  border: 1px solid var(--border, rgba(255,255,255,.2));
+  color: var(--text-secondary, #aaa);
+}
+.ca-card__btn--reconnect:hover {
+  background: rgba(255,255,255,.07);
+  color: var(--text-primary, #eee);
+}
+
+/* ── badges ──────────────────────────────────────────────────────────────── */
+.ca-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 2px 6px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ca-badge--connected    { background: rgba(34,197,94,.15);  color: #22c55e; border: 1px solid rgba(34,197,94,.3); }
+.ca-badge--disconnected { background: rgba(100,100,100,.15); color: #888;    border: 1px solid rgba(100,100,100,.3); }
+.ca-badge--disabled     { background: rgba(234,179,8,.12);  color: #ca8a04; border: 1px solid rgba(234,179,8,.3); }
+
+/* ── status result box ──────────────────────────────────────────── */
+.ca-test-result {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  margin-top: 8px;
+}
+.ca-test-result--success { background: rgba(34,197,94,.1);  border: 1px solid rgba(34,197,94,.3);  color: #22c55e; }
+.ca-test-result--error   { background: rgba(239,68,68,.1);  border: 1px solid rgba(239,68,68,.3);  color: #f87171; }
+.ca-test-result--info    { background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.3); color: #93c5fd; }
+
+/* ── modal ──────────────────────────────────────────────────────────────── */
+.ca-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.ca-modal {
+  background: var(--surface-1, #1e1e1e);
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 10px;
+  width: 420px;
+  max-width: 94vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.ca-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+}
+.ca-modal__header h3 { margin: 0; font-size: 1rem; }
+.ca-modal__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3rem;
+  color: var(--text-secondary, #888);
+  line-height: 1;
+  padding: 0 4px;
+}
+.ca-modal__close:hover { color: var(--text-primary, #fff); }
+.ca-modal__body { padding: 14px 16px 16px; }
+
+/* ── waiting-for-login area inside modal ───────────────────────── */
+.ca-modal-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0 4px;
+  text-align: center;
+}
+.ca-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255,255,255,.12);
+  border-top-color: var(--accent, #c97c2a);
+  border-radius: 50%;
+  animation: ca-spin .8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes ca-spin {
+  to { transform: rotate(360deg); }
+}
+.ca-modal-waiting__text {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #aaa);
+  line-height: 1.5;
+}
+.ca-modal-waiting__open-link {
+  font-size: 0.8rem;
+  color: var(--accent, #c97c2a);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}

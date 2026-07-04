@@ -247,10 +247,6 @@ Change models per session — no more single global model, but a flexible choice
 
 ### 🤖 Agent Profiles
 
-<p align="center">
-  <img src="assets/hacker-mode.webp" width="600" alt="Agent Profile Selector">
-</p>
-
 Switch the agent's personality on-the-fly without losing context. Each profile overrides the system prompt (SOUL.md) while keeping model, memory, and tools shared. Profiles are per-session — run a security audit in one tab and plan architecture in another.
 
 Built-in profiles: Default · Builder · Planner · Reviewer · <b>Hacker</b> (elite security expert with 50+ tool recommendations, OWASP/MITRE/NIST methodologies, CVSS scoring, and a custom cyber-shiba avatar).
