@@ -230,6 +230,11 @@ async def api_update_apply(request: Request):
             elif _restart_callback is not None:
                 _restart_callback()
             else:
+                if _shutdown_callback is not None:
+                    try:
+                        _shutdown_callback()
+                    except Exception:
+                        pass
                 _schedule_restart_outside_loop(delay=2.0)
                 _graceful_shutdown_server()
 

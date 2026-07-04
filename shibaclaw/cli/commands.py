@@ -180,16 +180,27 @@ def web(
             "  [dim]Open the WebUI to complete the setup or run:[/dim] [bold]shibaclaw onboard[/bold]"
         )
 
+    def stop_gateway_proc():
+        nonlocal gateway_proc
+        if gateway_proc:
+            safe_print("[yellow]➜ Terminating Gateway process...[/yellow]")
+            try:
+                gateway_proc.terminate()
+                gateway_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    gateway_proc.kill()
+                except Exception:
+                    pass
+            gateway_proc = None
+
+    from shibaclaw.webui.routers.system import set_shutdown_callback
+    set_shutdown_callback(stop_gateway_proc)
+
     try:
         asyncio.run(run_server(port=port, host=host, config=cfg, provider=provider))
     finally:
-        if gateway_proc:
-            safe_print("[yellow]➜ Terminating Gateway process...[/yellow]")
-            gateway_proc.terminate()
-            try:
-                gateway_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                gateway_proc.kill()
+        stop_gateway_proc()
 
 
 @app.command()

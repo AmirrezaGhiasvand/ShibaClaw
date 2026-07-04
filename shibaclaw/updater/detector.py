@@ -38,8 +38,17 @@ def get_runtime_root_path() -> Path:
 
 
 def get_current_version() -> str:
-    """Return the current ShibaClaw version string."""
-    return __version__
+    """Return the current ShibaClaw version string.
+
+    Uses the dynamic version resolution helper to ensure that if the package is
+    updated on disk, subsequent update checks will immediately reflect the new
+    version without requiring a gateway restart.
+    """
+    try:
+        from shibaclaw import _get_version
+        return _get_version()
+    except Exception:
+        return __version__
 
 
 def _looks_like_source_checkout(root: Path) -> bool:
