@@ -395,4 +395,6 @@ class Config(BaseSettings):
         env_prefix="SHIBACLAW_",
         env_nested_delimiter="__",
         extra="ignore",
+        alias_generator=to_camel,
+        populate_by_name=True,
     )

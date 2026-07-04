@@ -227,8 +227,8 @@ async def _ensure_strata(
     cfg_dict: dict,
     user_id: str,
     server_name: str,
-) -> tuple[str, str]:  # (strata_id, mcp_url)
-    """Return a valid (strata_id, mcp_url), reusing existing or creating new.
+) -> tuple[str, str, bool, dict]:  # (strata_id, mcp_url, is_new, oauth_urls)
+    """Return a valid (strata_id, mcp_url, is_new, oauth_urls), reusing existing or creating new.
 
     Strategy:
       1. If strata_id in config → GET it from Klavis to confirm it exists.
@@ -247,7 +247,7 @@ async def _ensure_strata(
             if info.mcp_url:
                 mcp_url = info.mcp_url
             logger.debug("Reusing existing Strata id={}", strata_id)
-            return strata_id, mcp_url
+            return strata_id, mcp_url, False, info.oauth_urls
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 logger.warning("Strata {} is gone from Klavis — will recreate.", strata_id)
@@ -258,7 +258,7 @@ async def _ensure_strata(
 
     # Need to create
     try:
-        info = await klavis.create_strata(user_id, [])
+        info = await klavis.create_strata(user_id, [server_name])
         strata_id = info.strata_id
         mcp_url = info.mcp_url
         if _CONNECTED_APPS_KEY not in cfg_dict or cfg_dict[_CONNECTED_APPS_KEY] is None:
@@ -269,7 +269,7 @@ async def _ensure_strata(
             "user_id": user_id,
         }
         logger.info("Created new Strata id={} url={}", strata_id, mcp_url)
-        return strata_id, mcp_url
+        return strata_id, mcp_url, True, info.oauth_urls
     except KlavisLimitError:
         raise KlavisLimitError(_LIMIT_ERROR_MSG)
 
@@ -324,29 +324,33 @@ async def connect_app(request: Request) -> JSONResponse:
     strata_id = ""
 
     try:
-        strata_id, mcp_url = await _ensure_strata(
+        strata_id, mcp_url, is_new_strata, existing_oauth_urls = await _ensure_strata(
             klavis, cfg_dict, user_id, app_def.klavis_server_name
         )
 
-        # Strata exists — inject the server into it
-        try:
-            inject_result = await klavis.inject_server(strata_id, app_def.klavis_server_name)
-            logger.debug("inject_server result for {}: {}", app_id, inject_result)
-            oauth_urls_map = (inject_result or {}).get("oauthUrls") or {}
-            oauth_url = oauth_urls_map.get(app_def.klavis_server_name) or ""
-            if not oauth_url:
-                try:
-                    auth_status = await klavis.get_auth_status(strata_id, app_def.klavis_server_name)
-                    oauth_url = (
-                        auth_status.metadata.get("oauthUrl")
-                        or auth_status.metadata.get("oauth_url")
-                        or ""
-                    )
-                except Exception as e:
-                    logger.debug("get_auth_status after inject failed for {}: {}", app_id, e)
-        except httpx.HTTPStatusError as exc:
-            logger.error("inject_server failed for {}: {}", app_id, exc)
-            raise
+        oauth_url = existing_oauth_urls.get(app_def.klavis_server_name) or ""
+
+        # If strata already existed and we didn't have the oauth url, we inject it.
+        # If it was just created (is_new_strata), the server is already injected.
+        if not is_new_strata and not oauth_url:
+            try:
+                inject_result = await klavis.inject_server(strata_id, app_def.klavis_server_name)
+                logger.debug("inject_server result for {}: {}", app_id, inject_result)
+                oauth_urls_map = (inject_result or {}).get("oauthUrls") or {}
+                oauth_url = oauth_urls_map.get(app_def.klavis_server_name) or ""
+                if not oauth_url:
+                    try:
+                        auth_status = await klavis.get_auth_status(strata_id, app_def.klavis_server_name)
+                        oauth_url = (
+                            auth_status.metadata.get("oauthUrl")
+                            or auth_status.metadata.get("oauth_url")
+                            or ""
+                        )
+                    except Exception as e:
+                        logger.debug("get_auth_status after inject failed for {}: {}", app_id, e)
+            except httpx.HTTPStatusError as exc:
+                logger.error("inject_server failed for {}: {}", app_id, exc)
+                raise
 
     except KlavisLimitError as exc:
         logger.error("Klavis limit reached: {}", exc)
