@@ -112,6 +112,15 @@
         const headersVal = (s.headers && Object.keys(s.headers).length) ? JSON.stringify(s.headers, null, 2) : "";
         const envVal = (s.env && Object.keys(s.env).length) ? JSON.stringify(s.env, null, 2) : "";
 
+        const oauth = s.oauth || {};
+        const useOauth = !!s.oauth;
+        const authUrlVal = oauth.auth_url || oauth.authUrl || "";
+        const tokenUrlVal = oauth.token_url || oauth.tokenUrl || "";
+        const clientIdVal = oauth.client_id || oauth.clientId || "";
+        const clientSecretVal = oauth.client_secret || oauth.clientSecret || "";
+        const scopesVal = Array.isArray(oauth.scopes) ? oauth.scopes.join(", ") : (oauth.scopes || "");
+        const oauthTimeoutVal = oauth.callback_timeout || oauth.callbackTimeout || 120;
+
         card.innerHTML = `
             <div class="mcp-editor-header">
                 <span class="mcp-editor-title">${title}</span>
@@ -159,6 +168,39 @@
                     <label>Enabled Tools <span class="hint">(comma-sep, * = all)</span></label>
                     <input id="mcp-ed-tools" type="text" class="form-input" placeholder="*, tool_name, …" value="${escapeHtml(toolsVal)}">
                 </div>
+                <div class="field-row">
+                    <label for="mcp-ed-use-oauth">Use OAuth 2.0 PKCE</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="mcp-ed-use-oauth" ${useOauth ? "checked" : ""}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="mcp-ed-oauth-section" style="display: ${useOauth ? "flex" : "none"}; flex-direction: column; gap: 10px; border-left: 2px solid var(--border-color); padding-left: 12px; margin-bottom: 5px;">
+                    <div class="field-row">
+                        <label>Authorization URL <span class="req">*</span></label>
+                        <input id="mcp-ed-oauth-auth-url" type="text" class="form-input" placeholder="https://example.com/oauth/authorize" value="${escapeHtml(authUrlVal)}">
+                    </div>
+                    <div class="field-row">
+                        <label>Token URL <span class="req">*</span></label>
+                        <input id="mcp-ed-oauth-token-url" type="text" class="form-input" placeholder="https://example.com/oauth/token" value="${escapeHtml(tokenUrlVal)}">
+                    </div>
+                    <div class="field-row">
+                        <label>Client ID <span class="req">*</span></label>
+                        <input id="mcp-ed-oauth-client-id" type="text" class="form-input" placeholder="client_id_123" value="${escapeHtml(clientIdVal)}">
+                    </div>
+                    <div class="field-row">
+                        <label>Client Secret <span class="hint">(optional)</span></label>
+                        <input id="mcp-ed-oauth-client-secret" type="password" class="form-input" placeholder="client_secret_xyz" value="${escapeHtml(clientSecretVal)}">
+                    </div>
+                    <div class="field-row">
+                        <label>Scopes <span class="hint">(comma-separated)</span></label>
+                        <input id="mcp-ed-oauth-scopes" type="text" class="form-input" placeholder="read, write" value="${escapeHtml(scopesVal)}">
+                    </div>
+                    <div class="field-row">
+                        <label>Callback Timeout <span class="hint">(seconds)</span></label>
+                        <input id="mcp-ed-oauth-timeout" type="number" class="form-input" value="${oauthTimeoutVal}" min="10" max="600">
+                    </div>
+                </div>
             </div>
             <div class="mcp-editor-footer">
                 <div id="mcp-editor-err" class="mcp-editor-err" style="display:none"></div>
@@ -174,6 +216,14 @@
         document.getElementById("mcp-editor-close").addEventListener("click", _closeEditor);
         document.getElementById("mcp-ed-cancel").addEventListener("click", _closeEditor);
         document.getElementById("mcp-ed-save").addEventListener("click", _saveEditor);
+
+        const useOauthChk = document.getElementById("mcp-ed-use-oauth");
+        const oauthSec = document.getElementById("mcp-ed-oauth-section");
+        if (useOauthChk && oauthSec) {
+            useOauthChk.addEventListener("change", () => {
+                oauthSec.style.display = useOauthChk.checked ? "flex" : "none";
+            });
+        }
 
         // Focus name field
         setTimeout(() => {
@@ -221,6 +271,32 @@
         const env = parseJsonField("mcp-ed-env");
         if (env === null) return;
 
+        const useOauth = document.getElementById("mcp-ed-use-oauth")?.checked;
+        let oauth = null;
+        if (useOauth) {
+            const authUrl = (document.getElementById("mcp-ed-oauth-auth-url")?.value || "").trim();
+            const tokenUrl = (document.getElementById("mcp-ed-oauth-token-url")?.value || "").trim();
+            const clientId = (document.getElementById("mcp-ed-oauth-client-id")?.value || "").trim();
+            const clientSecret = (document.getElementById("mcp-ed-oauth-client-secret")?.value || "").trim() || null;
+            const scopes = (document.getElementById("mcp-ed-oauth-scopes")?.value || "")
+                .split(",").map(s => s.trim()).filter(Boolean);
+            const callbackTimeout = parseFloat(document.getElementById("mcp-ed-oauth-timeout")?.value) || 120.0;
+
+            if (!authUrl || !tokenUrl || !clientId) {
+                _showEditorErr(errEl, "Authorization URL, Token URL, and Client ID are required for OAuth.");
+                return;
+            }
+
+            oauth = {
+                auth_url: authUrl,
+                token_url: tokenUrl,
+                client_id: clientId,
+                client_secret: clientSecret,
+                scopes: scopes,
+                callback_timeout: callbackTimeout
+            };
+        }
+
         const body = {
             type: document.getElementById("mcp-ed-type")?.value || null,
             command: document.getElementById("mcp-ed-command")?.value.trim() || null,
@@ -232,6 +308,7 @@
             tool_timeout: parseInt(document.getElementById("mcp-ed-timeout")?.value) || 30,
             enabled_tools: (document.getElementById("mcp-ed-tools")?.value || "*")
                 .split(",").map(s => s.trim()).filter(Boolean),
+            oauth: oauth
         };
 
         // Clean nulls

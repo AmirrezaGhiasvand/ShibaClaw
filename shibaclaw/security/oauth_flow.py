@@ -55,7 +55,7 @@ class _CallbackServer:
     )
 
     def __init__(self) -> None:
-        self._future: asyncio.Future[dict[str, str]] = asyncio.get_event_loop().create_future()
+        self._future: asyncio.Future[dict[str, str]] = asyncio.get_running_loop().create_future()
         self._server: asyncio.Server | None = None
         self.port: int = 0
 
@@ -334,7 +334,15 @@ class OAuthFlow:
                 f"Token endpoint returned {resp.status_code}: {resp.text[:300]}"
             )
 
-        data: dict[str, Any] = resp.json()
+        content_type = resp.headers.get("content-type", "")
+        if "application/json" in content_type:
+            data: dict[str, Any] = resp.json()
+        else:
+            # Some providers return application/x-www-form-urlencoded
+            try:
+                data = resp.json()
+            except Exception:
+                data = dict(urllib.parse.parse_qsl(resp.text))
         if "access_token" not in data:
             raise RuntimeError(f"Token response missing 'access_token': {data}")
 

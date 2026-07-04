@@ -293,3 +293,74 @@ class TestOpenRouterOAuth:
 
         assert response.status_code == 200
         assert agent_manager.oauth_jobs["job-legacy"]["status"] == "done"
+
+
+class TestCustomMCPOAuth:
+    @pytest.mark.asyncio
+    async def test_custom_mcp_oauth_flow_json_and_urlencoded_and_refresh(self, tmp_path, monkeypatch):
+        import httpx
+        from shibaclaw.security.oauth_store import OAuthTokenStore
+        from shibaclaw.security.oauth_flow import OAuthFlow
+        from shibaclaw.config.schema import MCPOAuthConfig
+
+        store = OAuthTokenStore(store_dir=tmp_path)
+        flow = OAuthFlow(store=store)
+
+        cfg = MCPOAuthConfig(
+            auth_url="https://example.com/auth",
+            token_url="https://example.com/token",
+            client_id="my-client-id",
+            client_secret="my-client-secret",
+            scopes=["scope1"],
+        )
+
+        # Mock the POST token response to return x-www-form-urlencoded
+        observed_payloads = []
+        async def fake_post(client_self, url, data=None, **kwargs):
+            observed_payloads.append(data)
+            # Return form-urlencoded content first
+            body = "access_token=token-urlencoded-123&token_type=Bearer&expires_in=3600&refresh_token=refresh-123"
+            return httpx.Response(
+                200,
+                content=body.encode("utf-8"),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+        # Test code exchange (simulated without full callback server for unit test simplicity)
+        token_data = await flow._exchange_code(
+            server_name="test-server",
+            cfg=cfg,
+            code="code-123",
+            code_verifier="verifier-123",
+            redirect_uri="http://127.0.0.1:0/callback",
+        )
+
+        assert token_data["access_token"] == "token-urlencoded-123"
+        assert token_data["refresh_token"] == "refresh-123"
+        assert observed_payloads[0]["code"] == "code-123"
+        assert observed_payloads[0]["client_secret"] == "my-client-secret"
+
+        # Now save it and test refresh
+        store.save_token("test-server", token_data)
+        assert store.load_token("test-server")["access_token"] == "token-urlencoded-123"
+
+        # Mock refresh response (returning JSON this time)
+        async def fake_post_json(client_self, url, data=None, **kwargs):
+            observed_payloads.append(data)
+            return httpx.Response(
+                200,
+                json={"access_token": "token-json-456", "token_type": "Bearer", "expires_in": 3600},
+                headers={"Content-Type": "application/json"},
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", fake_post_json)
+
+        refreshed = await flow.refresh("test-server", cfg)
+        assert refreshed["access_token"] == "token-json-456"
+        # refresh_token should be preserved from stored token if absent in response
+        assert refreshed["refresh_token"] == "refresh-123"
+        assert observed_payloads[1]["grant_type"] == "refresh_token"
+        assert observed_payloads[1]["refresh_token"] == "refresh-123"
+

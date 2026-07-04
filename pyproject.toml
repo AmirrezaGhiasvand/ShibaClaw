@@ -51,6 +51,7 @@ dependencies = [
     "pillow>=11.0.0,<13.0.0",
     "python-telegram-bot[socks]>=22.6,<23.0",
     "python-socks[asyncio]>=2.8.0,<3.0.0",
+    "cryptography>=46.0.7",
 ]
 
 [project.optional-dependencies]

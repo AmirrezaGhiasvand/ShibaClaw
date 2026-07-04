@@ -223,10 +223,17 @@ async def test_mcp_server(request: Request) -> JSONResponse:
         if not url:
             return JSONResponse({"ok": False, "error": "No URL configured for HTTP server"})
         try:
-            import urllib.request
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                status = resp.status
+            from shibaclaw.agent.tools.mcp import _resolve_auth_headers
+            headers = await _resolve_auth_headers(name, sc)
+
+            import httpx
+            # Use a longer timeout in case first-time OAuth requires user interaction
+            timeout = sc_dict.get("oauth", {}).get("callback_timeout", 120.0) if sc_dict.get("oauth") else 10.0
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(url, headers=headers)
+                status = resp.status_code
+            if status >= 400:
+                return JSONResponse({"ok": False, "error": f"HTTP {status} from {url}"})
             return JSONResponse({"ok": True, "detail": f"HTTP {status} from {url}"})
         except Exception as exc:
             return JSONResponse({"ok": False, "error": str(exc)})
