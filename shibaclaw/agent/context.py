@@ -86,9 +86,14 @@ Skills with available="false" need dependencies installed first - you can try in
             mcp_info = get_mcp_servers_info()
             if mcp_info:
                 parts.append(f"""# Connected MCP Servers
-The following MCP servers are connected. You can list their tools using the `mcp_list_tools` tool, and execute their tools using the `mcp_call_tool` tool.
+The following MCP servers are active and connected:
+{mcp_info}
 
-{mcp_info}""")
+IMPORTANT: The individual tools of these MCP servers are NOT exposed directly as native tools or CLI commands, and you cannot call them via terminal/shell execution.
+To use them, you MUST follow this two-step process:
+1. First, call `mcp_list_tools(server_name="<server_name>")` to discover the exact list of tools, their descriptions, and parameters.
+2. Second, call `mcp_call_tool(server_name="<server_name>", tool_name="<tool_name>", arguments={{...}})` to execute the desired tool with its required arguments.
+""")
         except Exception:
             pass
 

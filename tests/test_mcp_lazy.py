@@ -75,4 +75,13 @@ async def test_mcp_lazy_discovery_and_execution():
     call_result_3 = await call_tool.execute(server_name="github", tool_name="get_issue", arguments={"issue_id": 123})
     assert "Error: Tool 'get_issue' is not enabled" in call_result_3
 
+    # Test casting of stringified JSON arguments parameter
+    casted = call_tool.cast_params({
+        "server_name": "github",
+        "tool_name": "search_code",
+        "arguments": '{"query": "test_json"}'
+    })
+    assert isinstance(casted["arguments"], dict)
+    assert casted["arguments"]["query"] == "test_json"
+
     clear_mcp_sessions()

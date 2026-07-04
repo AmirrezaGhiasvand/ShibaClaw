@@ -30,6 +30,7 @@ uv.lock
 .vscode/
 .jules/
 .Jules/
+.clinerules/
 scratch/
 ROADMAP.md
 docker-compose.build.yml
