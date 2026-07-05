@@ -109,7 +109,10 @@ async def _fetch_all_configured_provider_models(cfg) -> tuple[list[dict[str, str
         return [], []
 
     results = await asyncio.gather(
-        *(_fetch_provider_models(cfg, provider_name) for provider_name in provider_names),
+        *(
+            asyncio.wait_for(_fetch_provider_models(cfg, provider_name), timeout=6.0)
+            for provider_name in provider_names
+        ),
         return_exceptions=True,
     )
 

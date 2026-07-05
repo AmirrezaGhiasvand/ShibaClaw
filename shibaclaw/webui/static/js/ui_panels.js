@@ -1343,6 +1343,7 @@ async function loadOAuthPanel() {
                                         window._shibaConfig = settingsCfg;
                                         populateSettings(settingsCfg);
                                         _availableModels = []; // Clear model cache
+                                        _hasFetchedModels = false;
                                         switchSettingsTab("oauth");
                                     }
                                 }
@@ -2077,6 +2078,7 @@ window.saveSettings = async function () {
         const data = await res.json();
         if (typeof closeSettingsView === "function") closeSettingsView();
         _availableModels = []; // Clear model cache to force refresh
+        _hasFetchedModels = false;
         fetchStatus();
 
         if (data.restarted) {
@@ -2895,6 +2897,7 @@ window.obSubmit = async function () {
         closeModal("onboard-modal");
         state.onboardModalShown = false;
         _availableModels = []; // Clear model cache to force refresh
+        _hasFetchedModels = false;
         fetchStatus();
         loadHistory();
     } catch (e) {
@@ -2908,6 +2911,8 @@ window.obSubmit = async function () {
 
 /* ── Model Selector (Chat Window) ────────────────────────────────── */
 let _availableModels = [];
+let _fetchingModelsPromise = null;
+let _hasFetchedModels = false;
 const SETTINGS_MODEL_PICKERS = [
     {
         valueId: "s-agent-model",
@@ -2972,14 +2977,26 @@ async function fetchModels() {
 }
 
 async function ensureAvailableModels(listEl = null) {
-    if (_availableModels.length) {
+    if (_availableModels.length || _hasFetchedModels) {
         return _availableModels;
+    }
+    if (_fetchingModelsPromise) {
+        return _fetchingModelsPromise;
     }
     if (listEl) {
         listEl.innerHTML = '<div style="padding: 10px; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">Loading models...</div>';
     }
-    _availableModels = await fetchModels();
-    return _availableModels;
+    _fetchingModelsPromise = fetchModels().then(models => {
+        _availableModels = models || [];
+        _hasFetchedModels = true;
+        _fetchingModelsPromise = null;
+        return _availableModels;
+    }).catch(err => {
+        _hasFetchedModels = true;
+        _fetchingModelsPromise = null;
+        return [];
+    });
+    return _fetchingModelsPromise;
 }
 
 function filterModelsByQuery(query) {

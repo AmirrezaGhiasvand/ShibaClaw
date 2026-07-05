@@ -25,7 +25,7 @@ from loguru import logger
 
 
 KLAVIS_API_BASE = os.environ.get("KLAVIS_API_BASE", "https://api.klavis.ai")
-_TIMEOUT = 20.0
+_TIMEOUT = 6.0
 # Klavis error code returned when the 3-Strata limit is hit
 _LIMIT_REACHED_CODE = "P0001"
 _LIMIT_REACHED_MSG = "limit reached"

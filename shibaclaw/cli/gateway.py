@@ -1421,11 +1421,15 @@ async def gateway_command(
                 get_console().print("\nShutting down...")
         finally:
             try:
-                await channels.stop_all()
+                await asyncio.wait_for(channels.stop_all(), timeout=5.0)
+            except Exception as e:
+                logger.error("Error/timeout stopping channels during shutdown: {}", e)
             except asyncio.CancelledError:
                 pass
             try:
-                await agent.close_mcp()
+                await asyncio.wait_for(agent.close_mcp(), timeout=5.0)
+            except Exception as e:
+                logger.error("Error/timeout closing MCP during shutdown: {}", e)
             except asyncio.CancelledError:
                 pass
             automation.stop()

@@ -368,7 +368,6 @@ async def connect_app(request: Request) -> JSONResponse:
             except httpx.HTTPStatusError as exc:
                 logger.error("inject_server failed for {}: {}", app_id, exc)
                 raise
-
     except KlavisLimitError as exc:
         logger.error("Klavis limit reached: {}", exc)
         return JSONResponse({"error": str(exc)}, status_code=402)
@@ -381,12 +380,8 @@ async def connect_app(request: Request) -> JSONResponse:
         "connected": False,
         "pending_oauth": True,
     }
-    if mcp_url:
-        backend_cfg = _get_apps_cfg(cfg_dict).get("__backend__") or {}
-        klavis_api_key = backend_cfg.get("klavis_api_key") or ""
-        headers = {"Authorization": f"Bearer {klavis_api_key}"} if klavis_api_key else None
-        _sync_app_to_mcp(cfg_dict, app_def, mcp_url, headers=headers)
-
+    # Defer _sync_app_to_mcp until the user successfully completes the OAuth flow
+    # (it will be executed inside get_app_status upon successful authentication check).
     err = await _save_and_reload(cfg_dict)
     if err:
         return err
