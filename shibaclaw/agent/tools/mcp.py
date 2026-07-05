@@ -6,6 +6,7 @@ import asyncio
 from contextlib import AsyncExitStack
 from typing import Any
 
+from anyio.abc import ObjectReceiveStream
 import httpx
 from loguru import logger
 
@@ -134,9 +135,6 @@ def _get_mcp_lock() -> asyncio.Lock:
 class MCPReconnectError(Exception):
     """Raised when self-healing reconnection of an MCP server fails."""
     pass
-
-
-from anyio.abc import ObjectReceiveStream
 
 class SafeReadStream(ObjectReceiveStream[Any]):
     """Wrapper around anyio receive stream that converts ClosedResourceError and other errors

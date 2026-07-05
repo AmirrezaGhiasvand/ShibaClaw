@@ -576,7 +576,6 @@ async def test_cancel_connect_app_retains_local_strata_if_exists():
 async def test_connect_app_saves_strata_id_immediately_on_failure():
     from unittest.mock import AsyncMock, patch, MagicMock
     from starlette.requests import Request
-    import httpx
     from shibaclaw.webui.routers.connected_apps import connect_app
 
     scope = {

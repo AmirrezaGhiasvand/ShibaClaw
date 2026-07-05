@@ -187,7 +187,7 @@ async def test_mcp_execute_cancelled_propagation():
 @pytest.mark.asyncio
 async def test_mcp_incremental_connect(monkeypatch):
     from shibaclaw.agent.tools.registry import SkillVault
-    from shibaclaw.agent.tools.mcp import connect_mcp_servers, _mcp_sessions, _mcp_configs, _mcp_stacks, clear_mcp_sessions
+    from shibaclaw.agent.tools.mcp import connect_mcp_servers, _mcp_sessions, clear_mcp_sessions
     from contextlib import AsyncExitStack
 
     clear_mcp_sessions()
@@ -261,8 +261,6 @@ async def test_mcp_self_healing_reconnect(monkeypatch):
     from shibaclaw.agent.tools.mcp import (
         connect_mcp_servers,
         MCPCallTool,
-        _mcp_sessions,
-        _mcp_configs,
         clear_mcp_sessions,
     )
     from contextlib import AsyncExitStack
