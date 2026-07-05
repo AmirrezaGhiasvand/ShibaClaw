@@ -321,9 +321,10 @@ class ShibaBrain:
             if self._mcp_stack:
                 try:
                     await self._mcp_stack.aclose()
-                except Exception:
-                    pass
-                self._mcp_stack = None
+                except BaseException as close_e:
+                    logger.debug("Ignored exception during MCP stack aclose on connect failure: {}", close_e)
+                finally:
+                    self._mcp_stack = None
         finally:
             self._mcp_connecting = False
 
@@ -693,9 +694,10 @@ class ShibaBrain:
         if self._mcp_stack:
             try:
                 await self._mcp_stack.aclose()
-            except (RuntimeError, BaseExceptionGroup):
-                pass  # MCP SDK cancel scope cleanup is noisy but harmless
-            self._mcp_stack = None
+            except BaseException as e:
+                logger.debug("Ignored exception during MCP stack aclose: {}", e)
+            finally:
+                self._mcp_stack = None
         try:
             from shibaclaw.agent.tools.mcp import clear_mcp_sessions
             clear_mcp_sessions()
