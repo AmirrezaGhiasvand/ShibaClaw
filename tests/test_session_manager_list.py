@@ -1,6 +1,5 @@
 import time
-from datetime import datetime
-from shibaclaw.brain.manager import PackManager, Session
+from shibaclaw.brain.manager import PackManager
 
 def test_list_sessions_updated_at(tmp_path):
     manager = PackManager(tmp_path)
