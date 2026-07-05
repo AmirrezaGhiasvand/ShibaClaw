@@ -416,8 +416,17 @@ async def disconnect_app(request: Request) -> JSONResponse:
                 await klavis.remove_server(strata_id, app_def.klavis_server_name)
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code in (403, 404):
-                    logger.warning("Strata {} is inaccessible or gone from Klavis (status {}). Clearing locally.", strata_id, exc.response.status_code)
-                    _clear_stale_strata(cfg_dict)
+                    try:
+                        await klavis.get_strata(strata_id)
+                        logger.info("Strata {} still exists on Klavis. Retaining local strata ID.", strata_id)
+                    except httpx.HTTPStatusError as get_exc:
+                        if get_exc.response.status_code in (403, 404):
+                            logger.warning("Strata {} is indeed gone or inaccessible from Klavis (status {}). Clearing locally.", strata_id, get_exc.response.status_code)
+                            _clear_stale_strata(cfg_dict)
+                        else:
+                            logger.warning("Klavis get_strata failed during disconnect check: {}", get_exc)
+                    except Exception as get_exc:
+                        logger.warning("Klavis get_strata failed during disconnect check: {}", get_exc)
                 else:
                     logger.warning("Klavis remove_server failed for '{}': {}", app_id, exc)
             except Exception as exc:
@@ -464,8 +473,17 @@ async def cancel_connect_app(request: Request) -> JSONResponse:
                     await klavis.remove_server(strata_id, app_def.klavis_server_name)
                 except httpx.HTTPStatusError as exc:
                     if exc.response.status_code in (403, 404):
-                        logger.warning("Strata {} is inaccessible or gone from Klavis (status {}). Clearing locally.", strata_id, exc.response.status_code)
-                        _clear_stale_strata(cfg_dict)
+                        try:
+                            await klavis.get_strata(strata_id)
+                            logger.info("Strata {} still exists on Klavis. Retaining local strata ID.", strata_id)
+                        except httpx.HTTPStatusError as get_exc:
+                            if get_exc.response.status_code in (403, 404):
+                                logger.warning("Strata {} is indeed gone or inaccessible from Klavis (status {}). Clearing locally.", strata_id, get_exc.response.status_code)
+                                _clear_stale_strata(cfg_dict)
+                            else:
+                                logger.warning("Klavis get_strata failed during cancel check: {}", get_exc)
+                        except Exception as get_exc:
+                            logger.warning("Klavis get_strata failed during cancel check: {}", get_exc)
                     else:
                         logger.warning("Klavis remove_server failed during cancel for '{}': {}", app_id, exc)
                 except Exception as exc:
