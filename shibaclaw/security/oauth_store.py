@@ -13,6 +13,7 @@ from loguru import logger
 _STORE_FILENAME = "oauth_tokens.enc"
 _KEY_FILENAME = "oauth_store.key"
 
+_GLOBAL_FERNET_CACHE = None
 
 def _get_store_dir() -> Path:
     """Return the stable ~/.shibaclaw directory for token storage."""
@@ -53,12 +54,18 @@ class OAuthTokenStore:
         self._store_path = base / _STORE_FILENAME
         self._key_path = base / _KEY_FILENAME
         self._fernet = self._build_fernet()
+        self._cache: dict[str, Any] = {}
+        self._cache_mtime: float | None = None
 
     def _build_fernet(self):
+        global _GLOBAL_FERNET_CACHE
+        if _GLOBAL_FERNET_CACHE is not None:
+            return _GLOBAL_FERNET_CACHE
         from cryptography.fernet import Fernet
 
         key = _load_or_create_key(self._key_path)
-        return Fernet(key)
+        _GLOBAL_FERNET_CACHE = Fernet(key)
+        return _GLOBAL_FERNET_CACHE
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -69,9 +76,14 @@ class OAuthTokenStore:
         if not self._store_path.exists():
             return {}
         try:
+            mtime = self._store_path.stat().st_mtime
+            if self._cache_mtime == mtime:
+                return self._cache
             raw = self._store_path.read_bytes()
             plaintext = self._fernet.decrypt(raw)
-            return json.loads(plaintext)
+            self._cache = json.loads(plaintext)
+            self._cache_mtime = mtime
+            return self._cache
         except Exception as exc:
             logger.warning("OAuthTokenStore: failed to read token store: {}", exc)
             return {}
@@ -83,6 +95,8 @@ class OAuthTokenStore:
             ciphertext = self._fernet.encrypt(plaintext)
             self._store_path.parent.mkdir(parents=True, exist_ok=True)
             self._store_path.write_bytes(ciphertext)
+            self._cache = data
+            self._cache_mtime = self._store_path.stat().st_mtime
             try:
                 os.chmod(self._store_path, 0o600)
             except OSError:

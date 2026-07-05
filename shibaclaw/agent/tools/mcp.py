@@ -335,7 +335,7 @@ def _make_ssrf_hook(origin_url: str):
             or req_url.startswith(_origin + "?")
         ):
             return
-        redir_ok, redir_err = validate_resolved_url(req_url)
+        redir_ok, redir_err = await asyncio.to_thread(validate_resolved_url, req_url)
         if not redir_ok:
             raise httpx.RequestError(
                 f"Redirect blocked: {redir_err}", request=request
