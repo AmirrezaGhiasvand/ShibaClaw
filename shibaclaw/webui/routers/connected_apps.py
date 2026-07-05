@@ -259,8 +259,8 @@ async def _ensure_strata(
             logger.debug("Reusing existing Strata id={}", strata_id)
             return strata_id, mcp_url, False, info.oauth_urls
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                logger.warning("Strata {} is gone from Klavis — will recreate.", strata_id)
+            if exc.response.status_code in (403, 404):
+                logger.warning("Strata {} is inaccessible or gone from Klavis (status {}) — will recreate.", strata_id, exc.response.status_code)
                 _clear_stale_strata(cfg_dict)
                 strata_id = ""
             else:
@@ -414,6 +414,12 @@ async def disconnect_app(request: Request) -> JSONResponse:
         if strata_id:
             try:
                 await klavis.remove_server(strata_id, app_def.klavis_server_name)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (403, 404):
+                    logger.warning("Strata {} is inaccessible or gone from Klavis (status {}). Clearing locally.", strata_id, exc.response.status_code)
+                    _clear_stale_strata(cfg_dict)
+                else:
+                    logger.warning("Klavis remove_server failed for '{}': {}", app_id, exc)
             except Exception as exc:
                 logger.warning("Klavis remove_server failed for '{}': {}", app_id, exc)
 
@@ -449,6 +455,21 @@ async def cancel_connect_app(request: Request) -> JSONResponse:
         apps_cfg[app_id]["connected"] = False
         apps_cfg[app_id]["enabled"] = False
         cfg_dict[_CONNECTED_APPS_KEY] = apps_cfg
+
+        klavis = _get_klavis_client_clean()
+        if klavis.is_configured():
+            strata_id = _get_strata_meta(cfg_dict).get("strata_id") or ""
+            if strata_id:
+                try:
+                    await klavis.remove_server(strata_id, app_def.klavis_server_name)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code in (403, 404):
+                        logger.warning("Strata {} is inaccessible or gone from Klavis (status {}). Clearing locally.", strata_id, exc.response.status_code)
+                        _clear_stale_strata(cfg_dict)
+                    else:
+                        logger.warning("Klavis remove_server failed during cancel for '{}': {}", app_id, exc)
+                except Exception as exc:
+                    logger.warning("Klavis remove_server failed during cancel for '{}': {}", app_id, exc)
 
         # Remove the MCP server since the OAuth was cancelled and it's not authenticated
         _remove_app_from_mcp(cfg_dict, app_def)

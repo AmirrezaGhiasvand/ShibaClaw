@@ -643,6 +643,13 @@ async def gateway_command(
             await channels.reconfigure(new_cfg)
             new_hb = new_cfg.gateway.heartbeat
             await automation.reconfigure(new_provider, new_hb.model or None)
+
+            try:
+                from shibaclaw.integrations.klavis_client import reload_klavis_client
+                reload_klavis_client(base_url="https://api.klavis.ai")
+            except Exception as e:
+                logger.warning("Hot-reload: failed to reload Klavis client: {}", e)
+
             logger.info("Hot-reload complete")
         except Exception as e:
             logger.error("Hot-reload failed: {}", e)

@@ -119,6 +119,8 @@ def get_mcp_servers_info() -> str:
 async def _resolve_auth_headers(
     server_name: str,
     cfg: Any,  # MCPServerConfig
+    *,
+    interactive: bool = True,
 ) -> dict[str, str]:
     """
     Return the headers dict to use for this server, injecting a dynamic
@@ -143,6 +145,7 @@ async def _resolve_auth_headers(
             server_name,
             cfg.oauth,
             callback_timeout=cfg.oauth.callback_timeout,
+            interactive=interactive,
         )
     except Exception as exc:
         raise RuntimeError(
@@ -381,7 +384,7 @@ async def connect_mcp_servers(
                 read, write = await stack.enter_async_context(stdio_client(params))
 
             elif transport_type == "sse":
-                auth_headers = await _resolve_auth_headers(name, cfg)
+                auth_headers = await _resolve_auth_headers(name, cfg, interactive=False)
 
                 def _make_httpx_client_factory(
                     resolved_headers: dict[str, str],
@@ -413,7 +416,7 @@ async def connect_mcp_servers(
                 )
 
             elif transport_type == "streamableHttp":
-                auth_headers = await _resolve_auth_headers(name, cfg)
+                auth_headers = await _resolve_auth_headers(name, cfg, interactive=False)
 
                 # Use a reasonable timeout to prevent hanging connections
                 # tool_timeout defaults to 30s in MCPServerConfig, use that + buffer
