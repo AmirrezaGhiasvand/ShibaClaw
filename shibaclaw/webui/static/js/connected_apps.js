@@ -50,9 +50,10 @@
   let _apps = [];
   let _backendConfigured = false;  let _pendingOauthUrl = null;
   let _pendingOauthAppId = null;
-  // Prevent double-connect and double-poll
-  const _connecting = new Set();
-  const _polling    = new Set();
+  // Prevent double-connect, double-disconnect, and double-poll
+  const _connecting    = new Set();
+  const _disconnecting = new Set();
+  const _polling       = new Set();
 
   const CATEGORY_LABELS = {
     google:       'Google Services',
@@ -425,9 +426,16 @@
   }
 
   async function _disconnectApp(appId) {
+    // Debounce: ignore if already disconnecting this app
+    if (_disconnecting.has(appId)) return;
+    _disconnecting.add(appId);
+
     const appDef = _apps.find(a => a.id === appId);
     const name = appDef ? appDef.name : appId;
-    if (!confirm(`Disconnect ${name}? This will remove the MCP server entry.`)) return;
+    if (!confirm(`Disconnect ${name}? This will remove the MCP server entry.`)) {
+      _disconnecting.delete(appId);
+      return;
+    }
     try {
       const res = await fetch(`/api/apps/${encodeURIComponent(appId)}/connect`, {
         method: 'DELETE',
@@ -441,6 +449,8 @@
     } catch (e) {
       alert(`Network error: ${e.message}`);
       return;
+    } finally {
+      _disconnecting.delete(appId);
     }
     await _loadApps();
     _refreshCard(appId);

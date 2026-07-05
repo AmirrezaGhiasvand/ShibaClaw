@@ -316,6 +316,9 @@ async def connect_mcp_servers(
                         auth: httpx.Auth | None = None,
                     ) -> httpx.AsyncClient:
                         merged_headers = {**resolved_headers, **(headers or {})}
+                        # Use a reasonable default timeout if none provided
+                        if timeout is None:
+                            timeout = httpx.Timeout(connect=40.0, read=40.0, write=40.0, pool=40.0)
                         return httpx.AsyncClient(
                             headers=merged_headers or None,
                             follow_redirects=True,
@@ -332,12 +335,16 @@ async def connect_mcp_servers(
             elif transport_type == "streamableHttp":
                 auth_headers = await _resolve_auth_headers(name, cfg)
 
+                # Use a reasonable timeout to prevent hanging connections
+                # tool_timeout defaults to 30s in MCPServerConfig, use that + buffer
+                connect_timeout = getattr(cfg, "tool_timeout", 30) + 10
+
                 # _make_ssrf_hook captures cfg.url by value — safe across loop iterations
                 http_client = await stack.enter_async_context(
                     httpx.AsyncClient(
                         headers=auth_headers or None,
                         follow_redirects=True,
-                        timeout=None,
+                        timeout=httpx.Timeout(connect=connect_timeout, read=connect_timeout, write=connect_timeout, pool=connect_timeout),
                         event_hooks={"request": [_make_ssrf_hook(cfg.url)]},
                     )
                 )

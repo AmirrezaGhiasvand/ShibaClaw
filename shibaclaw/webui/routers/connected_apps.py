@@ -121,24 +121,34 @@ def _get_app_state(cfg_dict: dict, app_id: str) -> dict:
     return _get_apps_cfg(cfg_dict).get(app_id) or {}
 
 
-def _sync_app_to_mcp(cfg_dict: dict, app_def: ConnectedAppDef, strata_mcp_url: str) -> None:
+def _sync_app_to_mcp(
+    cfg_dict: dict,
+    app_def: ConnectedAppDef,
+    strata_mcp_url: str,
+    headers: dict[str, str] | None = None,
+) -> None:
     if "tools" not in cfg_dict or cfg_dict["tools"] is None:
         cfg_dict["tools"] = {}
     tools = cfg_dict["tools"]
-    servers_key = "mcp_servers" if "mcp_servers" in tools else "mcpServers"
-    if tools.get(servers_key) is None:
-        tools[servers_key] = {}
-    tools[servers_key][app_def.mcp_server_key] = {
+    # Always use "mcpServers" — the camelCase alias produced by model_dump(mode="json").
+    # Migrate legacy "mcp_servers" key if present.
+    if "mcp_servers" in tools and "mcpServers" not in tools:
+        tools["mcpServers"] = tools.pop("mcp_servers")
+    if tools.get("mcpServers") is None:
+        tools["mcpServers"] = {}
+    entry: dict[str, Any] = {
         "type": _DEFAULT_TRANSPORT,
         "url": strata_mcp_url,
-        "enabled": True,
     }
+    if headers:
+        entry["headers"] = headers
+    tools["mcpServers"][app_def.mcp_server_key] = entry
 
 
 def _remove_app_from_mcp(cfg_dict: dict, app_def: ConnectedAppDef) -> None:
     tools = cfg_dict.get("tools") or {}
-    servers_key = "mcp_servers" if "mcp_servers" in tools else "mcpServers"
-    servers = tools.get(servers_key) or {}
+    # Check both key variants for backward compatibility
+    servers = tools.get("mcpServers") or tools.get("mcp_servers") or {}
     servers.pop(app_def.mcp_server_key, None)
 
 
@@ -365,7 +375,10 @@ async def connect_app(request: Request) -> JSONResponse:
         "pending_oauth": True,
     }
     if mcp_url:
-        _sync_app_to_mcp(cfg_dict, app_def, mcp_url)
+        backend_cfg = _get_apps_cfg(cfg_dict).get("__backend__") or {}
+        klavis_api_key = backend_cfg.get("klavis_api_key") or ""
+        headers = {"Authorization": f"Bearer {klavis_api_key}"} if klavis_api_key else None
+        _sync_app_to_mcp(cfg_dict, app_def, mcp_url, headers=headers)
 
     err = await _save_and_reload(cfg_dict)
     if err:
@@ -437,9 +450,8 @@ async def cancel_connect_app(request: Request) -> JSONResponse:
         apps_cfg[app_id]["enabled"] = False
         cfg_dict[_CONNECTED_APPS_KEY] = apps_cfg
 
-        # We don't remove the MCP server completely since they just cancelled login,
-        # but they aren't authenticated yet. Alternatively, we could remove it
-        # but leaving it doesn't break things if connected=False.
+        # Remove the MCP server since the OAuth was cancelled and it's not authenticated
+        _remove_app_from_mcp(cfg_dict, app_def)
 
         err = await _save_and_reload(cfg_dict)
         if err:
@@ -475,6 +487,17 @@ async def get_app_status(request: Request) -> JSONResponse:
                     apps_cfg = cfg_dict.get(_CONNECTED_APPS_KEY) or {}
                     apps_cfg[app_id] = {"enabled": True, "connected": True, "pending_oauth": False}
                     cfg_dict[_CONNECTED_APPS_KEY] = apps_cfg
+
+                    # Inject Bearer token headers into MCP server config so
+                    # the Strata MCP proxy authenticates the tool calls.
+                    backend_cfg = apps_cfg.get("__backend__") or {}
+                    klavis_api_key = backend_cfg.get("klavis_api_key") or ""
+                    if klavis_api_key:
+                        strata_mcp_url = _get_strata_meta(cfg_dict).get("mcp_url", "")
+                        if strata_mcp_url:
+                            headers = {"Authorization": f"Bearer {klavis_api_key}"}
+                            _sync_app_to_mcp(cfg_dict, app_def, strata_mcp_url, headers=headers)
+
                     await _save_and_reload(cfg_dict)
                     app_state = apps_cfg[app_id]
                 else:

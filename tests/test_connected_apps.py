@@ -124,12 +124,12 @@ def test_sync_gmail_to_mcp():
 
     _sync_app_to_mcp(cfg, app_def, "https://strata.klavis.ai/mcp/" + app_def.id + "/")
 
-    servers = cfg["tools"]["mcp_servers"]
+    tools = cfg["tools"]
+    servers = tools.get("mcpServers") or tools.get("mcp_servers")
+    assert servers is not None
     assert "gmail-klavis" in servers
     entry = servers["gmail-klavis"]
     assert entry["url"] == "https://strata.klavis.ai/mcp/gmail/"
-    assert entry["enabled"] is True
-
 
 
 def test_sync_github_to_mcp():
@@ -139,7 +139,9 @@ def test_sync_github_to_mcp():
 
     _sync_app_to_mcp(cfg, app_def, "https://strata.klavis.ai/mcp/" + app_def.id + "/")
 
-    servers = cfg["tools"]["mcp_servers"]
+    tools = cfg["tools"]
+    servers = tools.get("mcpServers") or tools.get("mcp_servers")
+    assert servers is not None
     assert "github-klavis" in servers
 
 
@@ -156,7 +158,9 @@ def test_disconnect_gmail_removes_from_mcp():
 
     _remove_app_from_mcp(cfg, app_def)
 
-    assert "gmail-klavis" not in cfg["tools"]["mcp_servers"]
+    tools = cfg["tools"]
+    servers = tools.get("mcpServers") or tools.get("mcp_servers") or {}
+    assert "gmail-klavis" not in servers
 
 
 def test_disconnect_nonexistent_app_is_noop():
@@ -164,7 +168,9 @@ def test_disconnect_nonexistent_app_is_noop():
     cfg = _base_cfg()
     # no github-klavis in servers — should not raise
     _remove_app_from_mcp(cfg, app_def)
-    assert "github-klavis" not in cfg["tools"]["mcp_servers"]
+    tools = cfg["tools"]
+    servers = tools.get("mcpServers") or tools.get("mcp_servers") or {}
+    assert "github-klavis" not in servers
 
 
 # ── 7. build_app_response shape ───────────────────────────────────────────────

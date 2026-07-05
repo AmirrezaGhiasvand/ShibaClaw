@@ -1407,28 +1407,16 @@ async def gateway_command(
             else:
                 console.print("\nShutting down...")
         finally:
-            # Stop channel tasks first so _start_channel coroutines exit cleanly
-            # before stop_all() tries to call channel.stop() on them.
-            # This eliminates "Task was destroyed but it is pending!" warnings.
-            for name, task in list(channels._channel_tasks.items()):
-                if not task.done():
-                    task.cancel()
-            if channels._channel_tasks:
-                await asyncio.gather(
-                    *channels._channel_tasks.values(), return_exceptions=True
-                )
-            channels._channel_tasks.clear()
-
+            try:
+                await channels.stop_all()
+            except asyncio.CancelledError:
+                pass
             try:
                 await agent.close_mcp()
             except asyncio.CancelledError:
                 pass
             automation.stop()
             agent.stop()
-            try:
-                await channels.stop_all()
-            except asyncio.CancelledError:
-                pass
 
     await run()
 
