@@ -401,6 +401,15 @@ class Thinker(ABC):
             )
             await asyncio.sleep(delay)
 
+            # Fallback to non-streaming for the next attempt if it looks like an SSE/JSON parsing error
+            err_lower = (response.content or "").lower()
+            if "sse stream" in err_lower or "json error" in err_lower:
+                logger.warning("Falling back to non-streaming due to SSE parser error")
+                kw_chat = kw.copy()
+                kw_chat.pop("on_token", None)
+                # Delegate entirely to chat_with_retry for the remaining attempts
+                return await self.chat_with_retry(**kw_chat)
+
         # Final attempt
         try:
             return await asyncio.wait_for(

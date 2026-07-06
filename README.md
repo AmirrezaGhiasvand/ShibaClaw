@@ -54,12 +54,12 @@ The easiest way to get started. One command downloads the latest release, sets u
 
 **Windows (PowerShell):**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/scripts/install/install.ps1 | iex
+iwr -useb https://github.com/RikyZ90/ShibaClaw/releases/latest/download/install.ps1 | iex
 ```
 
 **Linux / macOS (Terminal):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/RikyZ90/ShibaClaw/main/scripts/install/install.sh | bash
+curl -fsSL https://github.com/RikyZ90/ShibaClaw/releases/latest/download/install.sh | bash
 ```
 
 > **Note**: On Windows, this downloads the pre-built desktop app from the latest GitHub Release — no Python required. Desktop and Start Menu shortcuts are created automatically, and the app appears in Apps & Features for clean uninstall. On Linux/macOS, the script installs via pip in an isolated virtual environment.
