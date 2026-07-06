@@ -1,5 +1,8 @@
 ## [0.8.3] - 2026-07-06
 
+### Added
+- **Agent Context Builder** — Implemented a new context builder and support infrastructure for enhanced agent runtime state management.
+
 ### Changed
 - **Dependencies** — Bumped minimum dependency versions in `pyproject.toml` to the latest secure and stable versions across the environment.
 
