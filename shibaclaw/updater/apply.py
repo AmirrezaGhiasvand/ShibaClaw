@@ -147,11 +147,12 @@ def _exe_upgrade(
     install_dir_str = str(install_dir) if install_dir else ""
 
     try:
-        detached_process = 0x00000008
+        create_no_window = 0x08000000
         create_new_process_group = 0x00000200
 
         cmd = [
             "powershell.exe",
+            "-WindowStyle", "Hidden",
             "-NoProfile",
             "-ExecutionPolicy", "Bypass",
             "-File", str(temp_ps1),
@@ -164,8 +165,7 @@ def _exe_upgrade(
 
         subprocess.Popen(
             cmd,
-            creationflags=detached_process | create_new_process_group,
-            close_fds=True,
+            creationflags=create_no_window | create_new_process_group,
             cwd=tempfile.gettempdir(),
         )
 

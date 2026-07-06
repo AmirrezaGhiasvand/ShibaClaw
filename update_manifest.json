@@ -1,26 +1,26 @@
 {
-    "version": "0.8.1",
-    "release_notes": "Added Klavis Strata Connected Apps integration, resolved session list sorting bugs, fixed settings API key persistence, improved restart/shutdown reliability, and optimized backend I/O performance.",
+    "version": "0.8.2",
+    "release_notes": "Added Task Automation Virtual Jobs, redesigned Connected Apps UI with a premium compact modal, and fixed Windows EXE Auto-Update crashes.",
     "changes": [
         {
             "path": "pyproject.toml",
             "overwrite": true,
-            "note": "Bumped version to 0.8.1."
+            "note": "Bumped version to 0.8.2."
         },
         {
             "path": "CHANGELOG.md",
             "overwrite": true,
-            "note": "Added v0.8.1 release notes."
+            "note": "Added v0.8.2 release notes."
         },
         {
             "path": "README.md",
             "overwrite": true,
-            "note": "Updated welcome announcement to v0.8.1."
+            "note": "Updated welcome announcement to v0.8.2."
         },
         {
             "path": "shibaclaw/updater/update_manifest.json",
             "overwrite": true,
-            "note": "Bumped packaged update manifest to v0.8.1."
+            "note": "Bumped packaged update manifest to v0.8.2."
         }
     ]
 }

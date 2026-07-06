@@ -22,10 +22,11 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.8.1</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.8.2</b> — Click to see what's new</summary>
 
-- **Apps (Klavis Strata Integration)** — Integrated Klavis Strata support inside the connected apps dashboard, deferring the MCP sync until the user successfully completes the OAuth callback check rather than on setup start.
-- **Settings & UI Fixes** — Preserves provider API keys and custom API base URLs when expanding/collapsing accordion panels. Adds promise-based caching to settings model fetches to prevent redundant concurrent API requests.
+- **Task Automation Virtual Jobs** — Updated the WebUI Automation menu to automatically parse `TASK.md` and display "virtual jobs" for active tasks, allowing them to be quickly triggered or upgraded into independent automation routines.
+- **Apps UX** — Moved the Connected Apps menu out of the Settings panel and into the main sidebar under Automation for faster access. The UI has been completely redesigned into a standalone, compact modal featuring a premium glassmorphic layout, animated hover effects, gradient backgrounds, and refined buttons.
+- **Windows EXE Auto-Update** — Replaced `DETACHED_PROCESS` with `CREATE_NO_WINDOW` when launching the PowerShell auto-update script to prevent immediate crashes caused by invalid console handles upon parent exit.
 - **Platform & Shutdown Reliability** — Resolved Windows gateway restart issues by dropping `close_fds=True` from the subprocess creation, and added 5-second execution timeouts for channel and MCP client shutdowns.
 - **Session Sorting & Performance** — Fixed WebUI session list sorting to use the `.jsonl` file modification time (`st_mtime`). Added I/O caching for `OAuthTokenStore` and Fernet encryption keys to unblock event loop bottlenecks.
 

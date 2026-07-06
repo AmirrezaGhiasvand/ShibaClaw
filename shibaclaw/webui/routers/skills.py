@@ -28,8 +28,23 @@ async def api_skills_list(request: Request):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
+    profile_id = request.query_params.get("profile_id")
     cfg = agent_manager.config
-    pinned = cfg.agents.defaults.pinned_skills if cfg else []
+    
+    pinned = None
+    if profile_id and cfg:
+        try:
+            from shibaclaw.agent.profiles import ProfileManager, DEFAULT_PROFILE_ID
+            pm = ProfileManager(cfg.workspace_path)
+            prof = pm.get_profile(profile_id or DEFAULT_PROFILE_ID)
+            if prof and "pinned_skills" in prof:
+                pinned = prof["pinned_skills"]
+        except Exception:
+            pass
+
+    if pinned is None:
+        pinned = cfg.agents.defaults.pinned_skills if cfg else []
+
     max_pinned = cfg.agents.defaults.max_pinned_skills if cfg else 5
 
     skills = []
@@ -67,6 +82,8 @@ async def api_skills_pin(request: Request):
     data = await request.json()
     skill_names = data.get("pinned_skills", data.get("skills", []))
 
+    profile_id = data.get("profile_id")
+
     cfg = agent_manager.config
     if not cfg:
         return JSONResponse({"error": "No config"}, status_code=400)
@@ -91,11 +108,21 @@ async def api_skills_pin(request: Request):
             status_code=422,
         )
 
+    if profile_id:
+        try:
+            from shibaclaw.agent.profiles import ProfileManager
+            pm = ProfileManager(cfg.workspace_path)
+            pm.update_profile(profile_id, pinned_skills=list(skill_names))
+            logger.info("Pinned skills updated for profile {}: {}", profile_id, skill_names)
+            return JSONResponse({"status": "updated", "pinned_skills": skill_names, "profile_id": profile_id})
+        except Exception as e:
+            return JSONResponse({"error": f"Failed to update profile: {e}"}, status_code=500)
+
     cfg.agents.defaults.pinned_skills = list(skill_names)
     from shibaclaw.config.loader import save_config
 
     save_config(cfg)
-    logger.info("Pinned skills updated: {}", skill_names)
+    logger.info("Pinned skills updated globally: {}", skill_names)
 
     return JSONResponse({"status": "updated", "pinned_skills": skill_names})
 

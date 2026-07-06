@@ -119,6 +119,8 @@ jobs:
           files: |
             update_manifest.json
             dist-windows/ShibaClaw-windows.zip
+            scripts/install/install.ps1
+            scripts/install/install.sh
           fail_on_unmatched_files: true
           generate_release_notes: true
 

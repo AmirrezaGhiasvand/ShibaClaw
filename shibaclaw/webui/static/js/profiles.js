@@ -67,6 +67,13 @@ async function syncProfileSelection(profileId) {
     state.profileId = profileId || "default";
     _applyProfileAvatar(state.profileId);
     updateProfileLabel();
+    if (typeof window.loadSkillsPanel === "function") {
+        const selectEl = document.getElementById("skills-profile-select");
+        if (selectEl) {
+            selectEl.value = state.profileId;
+        }
+        window.loadSkillsPanel();
+    }
 }
 
 window.syncProfileSelection = syncProfileSelection;

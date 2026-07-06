@@ -64,9 +64,10 @@ async function loadAutomationPanel() {
     listEl.innerHTML = '<div class="automation-loading">Loading jobs...</div>';
 
     try {
-        const [statusRes, jobsRes] = await Promise.all([
+        const [statusRes, jobsRes, taskMdRes] = await Promise.all([
             authFetch('/api/automation/status'),
             authFetch('/api/automation/jobs'),
+            authFetch(`/api/file-get?path=TASK.md&_t=${Date.now()}`).catch(() => ({ok: false}))
         ]);
 
         if (!statusRes.ok || !jobsRes.ok) {
@@ -76,11 +77,54 @@ async function loadAutomationPanel() {
         const statusData = await statusRes.json();
         const jobsData = await jobsRes.json();
 
-        // Hide system heartbeat job from UI completely
+        let globalHb = null;
+        // Hide system heartbeat job from UI natively, but save a ref to it
         _autoJobs = (jobsData.jobs || []).filter(job => {
             const isHeartbeat = (job.payload || {}).kind === 'heartbeat';
-            return !(isHeartbeat && (job.name === 'Heartbeat' || job.name === 'heartbeat'));
+            if (isHeartbeat && (job.name === 'Heartbeat' || job.name === 'heartbeat')) {
+                globalHb = job;
+                return false;
+            }
+            return true;
         });
+
+        // Parse TASK.md for virtual jobs
+        if (taskMdRes && taskMdRes.ok) {
+            let taskMd = await taskMdRes.text();
+            taskMd = taskMd.replace(/<!--[\s\S]*?-->/g, ''); // strip comments
+            
+            let relevant = taskMd;
+            const activeMatch = /^##\s+Active Tasks\s*$/im.exec(taskMd);
+            if (activeMatch) {
+                relevant = taskMd.slice(activeMatch.index + activeMatch[0].length);
+                const boundary = /^##\s+(Completed|Notes)\s*$/im.exec(relevant);
+                if (boundary) {
+                    relevant = relevant.slice(0, boundary.index);
+                }
+            }
+            
+            const headingRe = /^(?:##\s*Task:\s*([^\n]+)|###\s*Task:\s*([^\n]+)|##\s+([^\n#][^\n]*))\s*$/igm;
+            let match;
+            const virtualJobs = [];
+            while ((match = headingRe.exec(relevant)) !== null) {
+                const name = (match[1] || match[2] || match[3] || '').trim();
+                if (!name) continue;
+                
+                const isManaged = _autoJobs.some(j => (j.name || '').trim().toLowerCase() === name.toLowerCase());
+                if (!isManaged) {
+                    virtualJobs.push({
+                        id: `v-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                        name: name,
+                        enabled: globalHb ? globalHb.enabled : true,
+                        schedule: globalHb ? globalHb.schedule : { kind: 'every', everyMs: 30 * 60 * 1000 },
+                        payload: { kind: 'heartbeat' },
+                        state: globalHb ? globalHb.state : {},
+                        isVirtual: true
+                    });
+                }
+            }
+            _autoJobs.push(...virtualJobs);
+        }
 
         if (statusData.reachable === false) {
             if (statusRow) statusRow.className = 'automation-status-row status-offline';
@@ -174,47 +218,67 @@ async function loadAutomationPanel() {
                     <span class="material-icons-round auto-kind-icon" title="${kindLabel}">${kindIcon}</span>
                 </div>
                 <div class="auto-job-center">
-                    <div class="auto-job-name">${safeName}</div>
+                    <div class="auto-job-name">${safeName} ${job.isVirtual ? '<span class="automation-badge-mini" style="margin-left:8px;font-size:10px;opacity:0.7;vertical-align:middle;">TASK.md</span>' : ''}</div>
                     <div class="auto-job-meta">${escapeHtml(meta)}${lastErr ? ` · <span class="auto-err">${lastErr}</span>` : ''}</div>
                 </div>
                 <div class="auto-job-actions">
-                    <label class="toggle auto-toggle" title="${job.enabled ? 'Disable' : 'Enable'}">
+                    ${job.isVirtual ? '' : `<label class="toggle auto-toggle" title="${job.enabled ? 'Disable' : 'Enable'}">
                         <input type="checkbox" class="auto-enable-cb" data-id="${escapeHtml(job.id)}" ${job.enabled ? 'checked' : ''}>
                         <span class="toggle-slider"></span>
-                    </label>
+                    </label>`}
                     <button class="btn-icon auto-btn-trigger" title="Run now" data-id="${escapeHtml(job.id)}">
                         <span class="material-icons-round">play_arrow</span>
                     </button>
-                    <button class="btn-icon auto-btn-edit" title="Edit" data-id="${escapeHtml(job.id)}">
-                        <span class="material-icons-round">edit</span>
+                    <button class="btn-icon auto-btn-edit" title="${job.isVirtual ? 'Upgrade to independent job' : 'Edit'}" data-id="${escapeHtml(job.id)}">
+                        <span class="material-icons-round">${job.isVirtual ? 'upgrade' : 'edit'}</span>
                     </button>
                     ${!isSystemHeartbeat ? `<button class="btn-icon auto-btn-delete danger" title="Delete" data-id="${escapeHtml(job.id)}">
                         <span class="material-icons-round">delete</span>
                     </button>` : ''}
                 </div>`;
 
-            row.querySelector('.auto-enable-cb').addEventListener('change', async (e) => {
-                const cb = e.currentTarget;
-                cb.disabled = true;
-                try {
-                    await authFetch(`/api/automation/jobs/${encodeURIComponent(job.id)}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled: cb.checked }),
-                    });
-                } catch (_) { cb.checked = !cb.checked; }
-                cb.disabled = false;
-                await loadAutomationPanel();
-            });
+            if (!job.isVirtual) {
+                row.querySelector('.auto-enable-cb').addEventListener('change', async (e) => {
+                    const cb = e.currentTarget;
+                    cb.disabled = true;
+                    try {
+                        await authFetch(`/api/automation/jobs/${encodeURIComponent(job.id)}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: cb.checked }),
+                        });
+                    } catch (_) { cb.checked = !cb.checked; }
+                    cb.disabled = false;
+                    await loadAutomationPanel();
+                });
+            }
 
             row.querySelector('.auto-btn-trigger').addEventListener('click', async () => {
                 try {
-                    await authFetch(`/api/automation/jobs/${encodeURIComponent(job.id)}/trigger`, { method: 'POST' });
+                    const targetId = job.isVirtual && globalHb ? globalHb.id : job.id;
+                    await authFetch(`/api/automation/jobs/${encodeURIComponent(targetId)}/trigger`, { method: 'POST' });
                 } catch (_) { }
                 await loadAutomationPanel();
             });
 
-            row.querySelector('.auto-btn-edit').addEventListener('click', () => openJobForm(job.id));
+            row.querySelector('.auto-btn-edit').addEventListener('click', () => {
+                if (job.isVirtual) {
+                    openJobForm();
+                    setTimeout(() => {
+                        const nameInput = document.getElementById('ajf-name');
+                        if (nameInput) nameInput.value = job.name;
+                        const msgInput = document.getElementById('ajf-message');
+                        if (msgInput) msgInput.value = `Please execute the active task named "${job.name}"`;
+                        const kindSelect = document.getElementById('ajf-sched-kind');
+                        if (kindSelect) {
+                            kindSelect.value = 'every';
+                            onSchedKindChange();
+                        }
+                    }, 50);
+                } else {
+                    openJobForm(job.id);
+                }
+            });
 
             const delBtn = row.querySelector('.auto-btn-delete');
             if (delBtn) {
@@ -222,7 +286,9 @@ async function loadAutomationPanel() {
                     const ok = await shibaDialog('confirm', 'Delete job', `Delete "${job.name || job.id}"?`, { confirmText: 'Delete', danger: true });
                     if (!ok) return;
                     try {
-                        await authFetch(`/api/automation/jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE' });
+                        if (!job.isVirtual) {
+                            await authFetch(`/api/automation/jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE' });
+                        }
                         if (job.name) await _removeFromTaskMd(job.name);
                     } catch (_) { }
                     await loadAutomationPanel();

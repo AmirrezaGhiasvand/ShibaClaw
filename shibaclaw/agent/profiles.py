@@ -77,6 +77,8 @@ class ProfileManager:
         }
         if default_meta.get("avatar"):
             entry["avatar"] = default_meta["avatar"]
+        if "pinned_skills" in default_meta:
+            entry["pinned_skills"] = default_meta["pinned_skills"]
         profiles.append(entry)
 
         # Profiles from manifest
@@ -93,6 +95,8 @@ class ProfileManager:
             }
             if meta.get("avatar"):
                 entry["avatar"] = meta["avatar"]
+            if "pinned_skills" in meta:
+                entry["pinned_skills"] = meta["pinned_skills"]
             profiles.append(entry)
 
         # Discover profiles not in manifest (user-created directories)
@@ -127,6 +131,8 @@ class ProfileManager:
             }
             if meta.get("avatar"):
                 result["avatar"] = meta["avatar"]
+            if "pinned_skills" in meta:
+                result["pinned_skills"] = meta["pinned_skills"]
             return result
 
         soul = self.get_soul_content(profile_id)
@@ -141,6 +147,8 @@ class ProfileManager:
         }
         if meta.get("avatar"):
             result["avatar"] = meta["avatar"]
+        if "pinned_skills" in meta:
+            result["pinned_skills"] = meta["pinned_skills"]
         return result
 
     def create_profile(
@@ -150,6 +158,7 @@ class ProfileManager:
         description: str = "",
         soul_content: str = "",
         avatar: str | None = None,
+        pinned_skills: list[str] | None = None,
     ) -> dict[str, Any]:
         """Create a custom profile."""
         profile_dir = self.profiles_dir / profile_id
@@ -164,6 +173,8 @@ class ProfileManager:
         }
         if avatar:
             entry["avatar"] = avatar
+        if pinned_skills is not None:
+            entry["pinned_skills"] = pinned_skills
         manifest[profile_id] = entry
         self._save_manifest(manifest)
         return self.get_profile(profile_id)  # type: ignore[return-value]
@@ -175,6 +186,7 @@ class ProfileManager:
         description: str | None = None,
         soul_content: str | None = None,
         avatar: str | None = ...,
+        pinned_skills: list[str] | None = ...,
     ) -> dict[str, Any] | None:
         """Update profile metadata or soul content."""
         manifest = self._load_manifest()
@@ -199,6 +211,11 @@ class ProfileManager:
                     entry["avatar"] = avatar
                 else:
                     entry.pop("avatar", None)
+            if pinned_skills is not ...:
+                if pinned_skills is not None:
+                    entry["pinned_skills"] = pinned_skills
+                else:
+                    entry.pop("pinned_skills", None)
             manifest[DEFAULT_PROFILE_ID] = entry
             self._save_manifest(manifest)
             return self.get_profile(DEFAULT_PROFILE_ID)
@@ -224,6 +241,11 @@ class ProfileManager:
                 entry["avatar"] = avatar
             else:
                 entry.pop("avatar", None)
+        if pinned_skills is not ...:
+            if pinned_skills is not None:
+                entry["pinned_skills"] = pinned_skills
+            else:
+                entry.pop("pinned_skills", None)
         manifest[profile_id] = entry
         self._save_manifest(manifest)
         return self.get_profile(profile_id)

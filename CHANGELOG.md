@@ -1,3 +1,14 @@
+## [0.8.2] - 2026-07-06
+
+### Added
+- **Task Automation Virtual Jobs** — Updated the WebUI Automation menu to automatically parse `TASK.md` and display "virtual jobs" for active tasks, allowing them to be quickly triggered or upgraded into independent automation routines.
+
+### Fixed
+- **Windows EXE Auto-Update** — Replaced `DETACHED_PROCESS` with `CREATE_NO_WINDOW` when launching the PowerShell auto-update script to prevent immediate crashes caused by invalid console handles upon parent exit.
+
+### Changed
+- **Connected Apps UX** — Moved the Connected Apps menu out of the Settings panel and into the main sidebar under Automation for faster access. The UI has been completely redesigned into a standalone, compact modal featuring a premium glassmorphic layout, animated hover effects, gradient backgrounds, and refined buttons.
+
 ## [0.8.1] - 2026-07-05
 
 ### Added

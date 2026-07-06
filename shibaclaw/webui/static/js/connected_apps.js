@@ -75,12 +75,12 @@
     _renderPanel(container);
   };
 
-  /* ── auto-hook switchSettingsTab ──────────────────────────────────────── */
-  (function _hookSwitchSettingsTab() {
+  /* ── auto-hook openModal ──────────────────────────────────────── */
+  (function _hookOpenModal() {
     function _patch(original) {
-      return function (tab, options) {
-        const result = original ? original.call(this, tab, options) : undefined;
-        if (tab === 'connected-apps') {
+      return async function (id) {
+        const result = original ? await original.call(this, id) : undefined;
+        if (id === 'connected-apps-modal') {
           if (typeof window.loadConnectedAppsPanel === 'function') {
             window.loadConnectedAppsPanel();
           }
@@ -88,12 +88,12 @@
         return result;
       };
     }
-    if (typeof window.switchSettingsTab === 'function') {
-      window.switchSettingsTab = _patch(window.switchSettingsTab);
+    if (typeof window.openModal === 'function') {
+      window.openModal = _patch(window.openModal);
     } else {
       document.addEventListener('DOMContentLoaded', function () {
-        if (typeof window.switchSettingsTab === 'function') {
-          window.switchSettingsTab = _patch(window.switchSettingsTab);
+        if (typeof window.openModal === 'function') {
+          window.openModal = _patch(window.openModal);
         }
       }, { once: true });
     }

@@ -99,6 +99,9 @@
                     <span class="material-icons-round">event_repeat</span> Automation
                     <span class="automation-badge-mini" id="automation-badge-mini" style="display:none"></span>
                 </button>
+                <button class="btn-command" onclick="openModal('connected-apps-modal')">
+                    <span class="material-icons-round">apps</span> Apps
+                </button>
                 <button class="btn-command" onclick="openModal('settings-modal')">
                     <span class="material-icons-round">settings</span> Settings
                 </button>
@@ -351,9 +354,6 @@
                     <button class="settings-sidebar-item" data-tab="mcp" onclick="switchSettingsTab('mcp')">
                         <span class="material-icons-round">hub</span><span>MCP</span>
                     </button>
-                    <button class="settings-sidebar-item" data-tab="connected-apps" onclick="switchSettingsTab('connected-apps')">
-                        <span class="material-icons-round">apps</span><span>Connected Apps</span>
-                    </button>
                     <button class="settings-sidebar-item" data-tab="gateway" onclick="switchSettingsTab('gateway')">
                         <span class="material-icons-round">dns</span><span>Gateway</span>
                     </button>
@@ -419,14 +419,6 @@
                             <div class="dash-content">
                                 <div class="dash-title">MCP</div>
                                 <div class="dash-desc">Model Context Protocol servers</div>
-                            </div>
-                            <span class="material-icons-round dash-arrow">chevron_right</span>
-                        </button>
-                        <button class="dashboard-card" onclick="switchSettingsTab('connected-apps')">
-                            <span class="material-icons-round dash-icon">apps</span>
-                            <div class="dash-content">
-                                <div class="dash-title">Connected Apps</div>
-                                <div class="dash-desc">Connect Gmail, Slack, Notion & more via Klavis</div>
                             </div>
                             <span class="material-icons-round dash-arrow">chevron_right</span>
                         </button>
@@ -685,11 +677,6 @@
                         <div id="mcp-manager-container"></div>
                     </div>
 
-                    <!-- Tab: Connected Apps -->
-                    <div class="settings-panel" id="panel-connected-apps" style="display:none">
-                        <div id="connected-apps-container"></div>
-                    </div>
-
                     <!-- Tab: Gateway -->
                     <div class="settings-panel" id="panel-gateway" style="display:none">
                         <div class="field-row"><label for="s-gw-host">Host</label><input type="text" id="s-gw-host" class="form-input"
@@ -740,6 +727,9 @@
                             <input type="text" id="skills-search" class="form-input"
                                 placeholder="Filter skills by name or description..." aria-label="Filter skills by name or description...">
                             <div class="skills-toolbar-actions">
+                                <select id="skills-profile-select" class="form-select" style="min-width: 150px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); margin-right: 8px;" aria-label="Select profile for skills" onchange="loadSkillsPanel()">
+                                    <option value="default">Default Profile</option>
+                                </select>
                                 <button type="button" class="btn-secondary" onclick="loadSkillsPanel()">
                                     <span class="material-icons-round"
                                         style="font-size:16px;vertical-align:middle">refresh</span> Refresh
@@ -1032,6 +1022,21 @@
                     <span class="material-icons-round" style="font-size:15px;vertical-align:middle">save</span>
                     Save
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Connected Apps Modal ══════════════════════════════════════════ -->
+    <div id="connected-apps-modal" class="modal-backdrop">
+        <div class="modal" style="width: 720px; max-width: 95vw;">
+            <div class="modal-header">
+                <h2><span class="material-icons-round">apps</span> Connected Apps</h2>
+                <button class="btn-icon" aria-label="Close" title="Close" onclick="closeModal('connected-apps-modal')">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 24px; overflow-y: auto;">
+                <div id="connected-apps-container"></div>
             </div>
         </div>
     </div>

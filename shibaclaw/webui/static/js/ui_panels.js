@@ -1078,8 +1078,32 @@ window._skillsMaxPinned = 5;
 
 async function loadSkillsPanel() {
     const listEl = document.getElementById("skills-list");
+    const selectEl = document.getElementById("skills-profile-select");
+    
+    // Ensure dropdown is populated
+    if (selectEl && selectEl.options.length <= 1) {
+        if (typeof fetchProfiles === "function") {
+            try {
+                const profiles = await fetchProfiles();
+                let html = "";
+                for (const p of profiles) {
+                    html += '<option value="' + p.id + '">' + escHtml(p.label) + '</option>';
+                }
+                selectEl.innerHTML = html;
+            } catch (e) {}
+        }
+    }
+    
+    // Sync the dropdown to the active profile if it's the first time opening
+    if (selectEl && !selectEl.dataset.initialized) {
+        const defaultPid = (typeof state !== 'undefined' && state.profileId) ? state.profileId : 'default';
+        selectEl.value = defaultPid;
+        selectEl.dataset.initialized = "true";
+    }
+
     try {
-        const res = await authFetch("/api/skills");
+        const pid = selectEl ? selectEl.value : ((typeof state !== 'undefined' && state.profileId) ? state.profileId : 'default');
+        const res = await authFetch("/api/skills?profile_id=" + encodeURIComponent(pid));
         if (!res.ok) {
             if (listEl) listEl.innerHTML = '<div style="color:#e57373;font-size:13px;padding:12px">Failed to load skills (HTTP ' + res.status + ')</div>';
             return;
@@ -1162,7 +1186,9 @@ window.toggleSkillPin = async function (name, pin) {
         list = list.filter(n => n !== name);
     }
     try {
-        const res = await authFetch("/api/skills/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pinned_skills: list }) });
+        const selectEl = document.getElementById("skills-profile-select");
+        const pid = selectEl ? selectEl.value : ((typeof state !== 'undefined' && state.profileId) ? state.profileId : 'default');
+        const res = await authFetch("/api/skills/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pinned_skills: list, profile_id: pid }) });
         if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Pin failed"); return; }
         window._skillsPinnedList = list;
         renderSkillsPanel();

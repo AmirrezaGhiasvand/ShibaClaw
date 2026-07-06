@@ -66,7 +66,26 @@ class ScentBuilder:
         if memory:
             parts.append(f"# Memory\n\n{memory}")
 
-        always_skills = self.skills.get_always_skills()
+        pinned_skills: list[str] | None = None
+        try:
+            from shibaclaw.agent.profiles import ProfileManager, DEFAULT_PROFILE_ID
+            pm = ProfileManager(self.workspace)
+            pid = profile_id or DEFAULT_PROFILE_ID
+            prof = pm.get_profile(pid)
+            if prof and "pinned_skills" in prof:
+                pinned_skills = prof["pinned_skills"]
+        except Exception:
+            pass
+
+        if pinned_skills is None:
+            try:
+                from shibaclaw.config.loader import load_config
+                cfg = load_config()
+                pinned_skills = cfg.agents.defaults.pinned_skills
+            except Exception:
+                pinned_skills = []
+
+        always_skills = self.skills.get_always_skills(pinned=pinned_skills)
         if always_skills:
             always_content = self.skills.load_skills_for_context(always_skills)
             if always_content:
