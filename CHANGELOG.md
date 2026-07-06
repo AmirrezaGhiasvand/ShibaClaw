@@ -6,6 +6,14 @@
 ### Changed
 - **Dependencies** — Bumped minimum dependency versions in `pyproject.toml` to the latest secure and stable versions across the environment.
 
+### Fixed
+- **TASK.md Comment Sanitization** — Resolved a CodeQL vulnerability (`js/incomplete-multi-character-sanitization`) by repeatedly stripping HTML comment tags from `TASK.md` parsing in a loop until none remain.
+- **TASK.md Virtual Task Deletion** — Updated the WebUI task deletion logic to support all task heading variants (`## Task:`, `### Task:`, `## name`) case-insensitively, ensuring tasks are correctly removed from `TASK.md` when deleted from the UI.
+- **Zip Slip & Path Traversal Mitigations** — Resolved a Zip Slip vulnerability in skill importing and path traversal risks in the plugin manager and updater version handling.
+- **Config Load Optimization** — Eliminated redundant disk writes and onboarding scans by running plugin discovery once per process.
+- **File Explorer Path Redaction** — Switched the explorer API to return relative paths instead of absolute local system paths, resolving information disclosure.
+- **WebSocket Close Handling** — Wrapped early websocket closes in try-except blocks to prevent unhandled connection errors on drop.
+
 ## [0.8.2] - 2026-07-06
 
 ### Added

@@ -24,11 +24,12 @@
 <details open>
 <summary>📢 <b>Latest Release: v0.8.3</b> — Click to see what's new</summary>
 
-- **Task Automation Virtual Jobs** — Updated the WebUI Automation menu to automatically parse `TASK.md` and display "virtual jobs" for active tasks, allowing them to be quickly triggered or upgraded into independent automation routines.
-- **Apps UX** — Moved the Connected Apps menu out of the Settings panel and into the main sidebar under Automation for faster access. The UI has been completely redesigned into a standalone, compact modal featuring a premium glassmorphic layout, animated hover effects, gradient backgrounds, and refined buttons.
-- **Windows EXE Auto-Update** — Replaced `DETACHED_PROCESS` with `CREATE_NO_WINDOW` when launching the PowerShell auto-update script to prevent immediate crashes caused by invalid console handles upon parent exit.
-- **Platform & Shutdown Reliability** — Resolved Windows gateway restart issues by dropping `close_fds=True` from the subprocess creation, and added 5-second execution timeouts for channel and MCP client shutdowns.
-- **Session Sorting & Performance** — Fixed WebUI session list sorting to use the `.jsonl` file modification time (`st_mtime`). Added I/O caching for `OAuthTokenStore` and Fernet encryption keys to unblock event loop bottlenecks.
+- **Agent Context Builder** — Implemented a new context builder and support infrastructure for enhanced agent runtime state management.
+- **Zip Slip & Path Traversal Mitigations** — Resolved a Zip Slip vulnerability in skill importing and path traversal risks in the plugin manager and updater version handling.
+- **Config Load Optimization** — Eliminated redundant disk writes and onboarding scans by running plugin discovery once per process.
+- **File Explorer Path Redaction** — Switched the explorer API to return relative paths instead of absolute local system paths, resolving information disclosure.
+- **WebSocket Close Handling** — Wrapped early websocket closes in try-except blocks to prevent unhandled connection errors on drop.
+- **TASK.md Sanitization & Virtual Tasks** — Fixed HTML comment sanitization in `TASK.md` and case-insensitive virtual task deletion logic.
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 

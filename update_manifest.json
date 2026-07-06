@@ -1,6 +1,6 @@
 {
     "version": "0.8.3",
-    "release_notes": "Bumped minimum dependency versions in pyproject.toml to the latest secure and stable versions.",
+    "release_notes": "Bumped minimum dependency versions in pyproject.toml to the latest secure and stable versions. Implemented security fixes for Zip Slip, path traversals, file explorer path disclosures, and optimized configuration load performance.",
     "changes": [
         {
             "path": "pyproject.toml",
@@ -21,6 +21,36 @@
             "path": "shibaclaw/updater/update_manifest.json",
             "overwrite": true,
             "note": "Bumped packaged update manifest to v0.8.3."
+        },
+        {
+            "path": "shibaclaw/agent/skills.py",
+            "overwrite": true,
+            "note": "Mitigate Zip Slip in skill extraction."
+        },
+        {
+            "path": "shibaclaw/config/loader.py",
+            "overwrite": true,
+            "note": "Cache plugin onboarding to optimize load performance."
+        },
+        {
+            "path": "shibaclaw/updater/apply.py",
+            "overwrite": true,
+            "note": "Validate version parameter to prevent traversal."
+        },
+        {
+            "path": "shibaclaw/webui/routers/plugins.py",
+            "overwrite": true,
+            "note": "Validate package parameter to prevent traversal."
+        },
+        {
+            "path": "shibaclaw/webui/routers/fs.py",
+            "overwrite": true,
+            "note": "Redact absolute local paths in directory explorer."
+        },
+        {
+            "path": "shibaclaw/webui/ws_handler.py",
+            "overwrite": true,
+            "note": "Handle potential errors during ws connection close."
         }
     ]
 }
