@@ -21,6 +21,7 @@ poetry.lock
 botpy.log
 nano.*.save
 .DS_Store
+uv.lock
 
 # Local data & research
 .vscode/
