@@ -191,6 +191,32 @@ class ExecTool(Tool):
                 report = audit_result.format_report()
                 return f"Error: Install blocked by vulnerability audit\n\n{report}"
 
+        cmd_lower = command.strip().lower()
+        if cmd_lower in ("ls", "dir", "ls -l", "ls -la", "ls -a", "dir /w", "dir /w /p"):
+            try:
+                entries = os.listdir(cwd)
+                output_lines = [f"Directory of {cwd}"]
+                for entry in entries:
+                    path = os.path.join(cwd, entry)
+                    size = os.path.getsize(path) if os.path.isfile(path) else "<DIR>"
+                    output_lines.append(f"{size:>10}  {entry}")
+                return "\n".join(output_lines)
+            except Exception as e:
+                return f"Error reading directory: {e}"
+        elif cmd_lower.startswith(("cat ", "type ")):
+            parts = command.strip().split(maxsplit=1)
+            if len(parts) == 2 and not any(c in parts[1] for c in ("*", "?", ">", "|", "&")):
+                file_path = os.path.join(cwd, parts[1].strip('"\''))
+                if os.path.isfile(file_path):
+                    try:
+                        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                            content = f.read(self._MAX_OUTPUT)
+                            if len(content) == self._MAX_OUTPUT:
+                                content += f"\n\n... (truncated to {self._MAX_OUTPUT} chars) ...\n"
+                            return content
+                    except Exception as e:
+                        return f"Error reading file: {e}"
+
         effective_timeout = min(timeout or self.timeout, self._MAX_TIMEOUT)
 
         env = os.environ.copy()

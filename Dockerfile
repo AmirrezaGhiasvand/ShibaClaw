@@ -46,6 +46,10 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Assicura che l'app usi il virtualenv di uv
 ENV PATH="/app/.venv/bin:$PATH"
+ENV TIKTOKEN_CACHE_DIR="/app/.tiktoken_cache"
+
+# Pre-download tiktoken cl100k_base encoding for offline use
+RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
 # Copia l'applicazione e i file necessari
 COPY . .

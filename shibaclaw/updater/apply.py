@@ -282,6 +282,23 @@ def apply_update(
     install_method = normalized["install_method"]
     version = normalized.get("latest") or (manifest or {}).get("version") or "unknown"
 
+    import re
+    if not re.match(r"^[a-zA-Z0-9.\-_]+$", version) or ".." in version:
+        return {
+            "install_method": install_method,
+            "version": version,
+            "requires_manual_action": False,
+            "restarting": False,
+            "action_kind": normalized.get("action_kind"),
+            "action_label": normalized.get("action_label"),
+            "action_command": normalized.get("action_command"),
+            "action_url": normalized.get("action_url") or normalized.get("release_url"),
+            "message": f"Failed to update ShibaClaw to {version}: Invalid version format.",
+            "pip": None,
+            "exe": {"ok": False, "output": "Invalid version format"},
+            "backup": {"moved": [], "skipped": []},
+        }
+
     if install_method not in ("pip", "exe") or normalized.get("action_kind") != "automatic":
         return _manual_report(normalized, version)
 

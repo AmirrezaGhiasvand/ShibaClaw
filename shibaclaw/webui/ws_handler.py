@@ -128,18 +128,27 @@ async def ws_endpoint(websocket: WebSocket):
         raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
         msg = json.loads(raw)
     except Exception:
-        await websocket.close(4001, "Expected auth message")
+        try:
+            await websocket.close(4001, "Expected auth message")
+        except Exception:
+            pass
         return
 
     if msg.get("type") != "auth":
-        await websocket.close(4001, "Expected auth message")
+        try:
+            await websocket.close(4001, "Expected auth message")
+        except Exception:
+            pass
         return
 
     if _auth_enabled():
         token = msg.get("token")
         if not verify_token_value(token):
             await _emit_to_ws(websocket, {"type": "error", "message": "Unauthorized"})
-            await websocket.close(4003, "Unauthorized")
+            try:
+                await websocket.close(4003, "Unauthorized")
+            except Exception:
+                pass
             logger.warning("🔒 WebSocket rejected (invalid token) from {}", ws_id)
             return
 

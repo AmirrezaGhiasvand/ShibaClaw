@@ -11,6 +11,7 @@ from loguru import logger
 from shibaclaw.config.schema import Config
 
 _current_config_path: Path | None = None
+_plugins_onboarded = False
 
 
 def set_config_path(path: Path) -> None:
@@ -36,6 +37,7 @@ def load_config(config_path: Path | None = None) -> Config:
     Returns:
         Loaded configuration object.
     """
+    global _plugins_onboarded
     path = config_path or get_config_path()
 
     if not path.exists():
@@ -45,6 +47,7 @@ def load_config(config_path: Path | None = None) -> Config:
         try:
             from shibaclaw.cli.onboard import _onboard_plugins
             _onboard_plugins(path)
+            _plugins_onboarded = True
         except Exception:
             logger.debug("[config] _onboard_plugins failed on new config", exc_info=True)
         return default_cfg
@@ -53,11 +56,17 @@ def load_config(config_path: Path | None = None) -> Config:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         data = _migrate_config(data)
-        try:
-            from shibaclaw.cli.onboard import _onboard_plugins
-            _onboard_plugins(path)
-        except Exception:
-            logger.debug("[config] _onboard_plugins failed on existing config", exc_info=True)
+        if not _plugins_onboarded:
+            try:
+                from shibaclaw.cli.onboard import _onboard_plugins
+                _onboard_plugins(path)
+                _plugins_onboarded = True
+                # Reload data in case onboarding modified the file
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                data = _migrate_config(data)
+            except Exception:
+                logger.debug("[config] _onboard_plugins failed on existing config", exc_info=True)
         return Config.model_validate(data)
     except (json.JSONDecodeError, ValueError, pydantic.ValidationError) as e:
         logger.warning(f"Failed to load config from {path}: {e}")

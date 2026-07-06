@@ -159,12 +159,13 @@ Defenses that are normally scattered across app glue or external proxies — in 
 | Layer | What it does |
 |---|---|
 | 🔍 Install-time audit | Audits `pip` and `npm` before execution — blocks critical/high CVEs before they land |
-| 🛡️ Prompt-injection wrapping | Wraps every tool result in a randomized `<tool_output_...>` boundary and sanitizes closing tags |
+| 🛡️ Prompt-injection wrap & Pre-scan | Wraps every tool result in a randomized `<tool_output_...>` boundary. Applies regex pre-scanning for jailbreaks and **Base64 encoding** for untrusted payloads |
 | 🔒 Shell hardening | 20+ deny patterns, escape normalization (`\x..`, `\u....`), internal URL detection |
+| ⚡ Local-First Engine | Native Command Emulator (`ls`, `cat`) bypasses subprocess overhead; offline-first `tiktoken` fallback for air-gapped execution |
 | 🌐 Network guard | SSRF filtering, redirect revalidation, DNS-rebinding-safe resolution |
 | 📁 Workspace sandbox | File tools and file browser locked to the configured workspace |
 | 🔑 Access control | Bearer token auth, constant-time checks, channel allowlists, optional rate limiting |
-| ⚡ Distributed engine | UI (≈128 MB) decoupled from agent brain (≈256 MB+) — minimal footprint per process |
+| 🧠 Distributed Engine | UI (≈128 MB) decoupled from agent brain (≈256 MB+) — minimal footprint per process |
 
 ### 🛡️ Prompt-Injection Wrapping (Tool Sandboxing)
 

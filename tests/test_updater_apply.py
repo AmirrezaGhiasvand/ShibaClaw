@@ -157,3 +157,21 @@ def test_exe_upgrade_downloads_and_launches(tmp_path, monkeypatch):
     assert progress_calls[-1][0] == progress_calls[-1][1]
     assert "-LocalZipPath" in launched_cmd
 
+
+def test_apply_update_invalid_version_fails(tmp_path):
+    from shibaclaw.updater.apply import apply_update
+
+    for bad_version in ["../bad", "1.0.0; calc", "1.0.0\\path", "v1.0..0"]:
+        report = apply_update(
+            {
+                "install_method": "pip",
+                "latest": bad_version,
+                "action_kind": "automatic",
+            },
+            tmp_path,
+        )
+        assert report["requires_manual_action"] is False
+        assert report["exe"]["ok"] is False
+        assert "Invalid version format" in report["exe"]["output"]
+
+

@@ -168,12 +168,16 @@ async def api_fs_explore(request: Request):
 
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
 
+        rel_current = target_path.relative_to(workspace).as_posix()
+        try:
+            rel_parent = target_path.parent.relative_to(workspace).as_posix() if target_path.parent != target_path else None
+        except ValueError:
+            rel_parent = None
+
         return JSONResponse(
             {
-                "current_path": str(target_path.absolute()),
-                "parent_path": str(target_path.parent.absolute())
-                if target_path.parent != target_path
-                else None,
+                "current_path": rel_current,
+                "parent_path": rel_parent,
                 "items": items,
             }
         )

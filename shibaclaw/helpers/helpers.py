@@ -22,6 +22,10 @@ def _get_encoding():
     return _ENC
 
 
+def fallback_token_estimate(text: str) -> int:
+    return len(re.findall(r"\w+", text)) + (len(text) // 4)
+
+
 def detect_image_mime(data: bytes) -> str | None:
     """Detect image MIME type from magic bytes, ignoring file extension."""
     if data[:8] == b"\x89PNG\r\n\x1a\n":
@@ -193,10 +197,12 @@ def estimate_prompt_tokens(
                 parts.append(json.dumps(msg["tool_calls"], ensure_ascii=False))
         if tools:
             parts.append(json.dumps(tools, ensure_ascii=False))
-        base = len(enc.encode("\n".join(parts)))
+        payload = "\n".join(parts)
+        base = len(enc.encode(payload))
         return base + max(0, len(messages)) * 4
     except Exception:
-        return 0
+        payload = "\n".join(parts) if 'parts' in locals() else str(messages)
+        return fallback_token_estimate(payload) + max(0, len(messages)) * 4
 
 
 def estimate_message_tokens(message: dict[str, Any]) -> int:
@@ -230,7 +236,7 @@ def estimate_message_tokens(message: dict[str, Any]) -> int:
         enc = _get_encoding()
         return max(1, len(enc.encode(payload)))
     except Exception:
-        return max(1, len(payload) // 4)
+        return max(1, fallback_token_estimate(payload))
 
 
 def estimate_prompt_tokens_chain(

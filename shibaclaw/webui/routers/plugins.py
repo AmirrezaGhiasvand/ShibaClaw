@@ -83,7 +83,8 @@ async def api_install_plugin(request: Request) -> JSONResponse:
     if not package:
         return JSONResponse({"error": "package is required"}, status_code=400)
 
-    if not package.startswith("shibaclaw-"):
+    import re
+    if not re.match(r"^shibaclaw-[a-zA-Z0-9_\-]+$", package):
         return JSONResponse({"error": "Only shibaclaw official plugins can be installed"}, status_code=400)
 
     from pathlib import Path
@@ -162,7 +163,8 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
     if not package:
         return JSONResponse({"error": "package is required"}, status_code=400)
 
-    if not package.startswith("shibaclaw-"):
+    import re
+    if not re.match(r"^shibaclaw-[a-zA-Z0-9_\-]+$", package):
         return JSONResponse({"error": "Only shibaclaw official plugins can be uninstalled"}, status_code=400)
 
     cmd = [sys.executable, "-m", "pip", "uninstall", "-y", package]

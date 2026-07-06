@@ -347,7 +347,9 @@ class SkillsLoader:
                             rel = zpath[len(prefix) + 1 :]
                         else:
                             continue
-                        target_file = dest / rel
+                        target_file = (dest / rel).resolve()
+                        if not target_file.is_relative_to(dest.resolve()):
+                            continue
                         target_file.parent.mkdir(parents=True, exist_ok=True)
                         target_file.write_bytes(zf.read(info.filename))
 
