@@ -22,7 +22,7 @@
 ***
 
 <details open>
-<summary>📢 <b>Latest Release: v0.8.2</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.8.3</b> — Click to see what's new</summary>
 
 - **Task Automation Virtual Jobs** — Updated the WebUI Automation menu to automatically parse `TASK.md` and display "virtual jobs" for active tasks, allowing them to be quickly triggered or upgraded into independent automation routines.
 - **Apps UX** — Moved the Connected Apps menu out of the Settings panel and into the main sidebar under Automation for faster access. The UI has been completely redesigned into a standalone, compact modal featuring a premium glassmorphic layout, animated hover effects, gradient backgrounds, and refined buttons.

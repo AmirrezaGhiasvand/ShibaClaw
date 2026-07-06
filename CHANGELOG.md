@@ -1,3 +1,8 @@
+## [0.8.3] - 2026-07-06
+
+### Changed
+- **Dependencies** — Bumped minimum dependency versions in `pyproject.toml` to the latest secure and stable versions across the environment.
+
 ## [0.8.2] - 2026-07-06
 
 ### Added
