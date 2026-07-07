@@ -106,17 +106,44 @@ async def _emit_to_session(session_key: str, msg: dict[str, Any], *, exclude: st
         if ws:
             try:
                 await ws.send_text(raw)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
 
 
 async def _emit_to_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
     """Send a message to a specific WebSocket client."""
     try:
         await ws.send_text(json.dumps(msg))
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored error: {}", _e)
 
+
+async def _synthesize_tts_response(config, response_content: str, final_atts: list) -> None:
+    if config and config.audio.tts_enabled and config.audio.tts_provider == "supertonic":
+        try:
+            from shibaclaw.tts.registry import discover_tts_plugins
+            tts_engines = discover_tts_plugins()
+            if "supertonic" in tts_engines:
+                tts_cls = tts_engines["supertonic"]
+                tts_cfg = {
+                    "tts_voice": config.audio.tts_voice,
+                    "tts_speed": config.audio.tts_speed,
+                    "tts_lang": config.audio.tts_lang,
+                }
+                tts_engine = tts_cls(tts_cfg)
+                uploads_dir = config.workspace_path / "uploads"
+                uploads_dir.mkdir(parents=True, exist_ok=True)
+                file_name = f"voice_agent_{uuid.uuid4().hex[:8]}.wav"
+                output_path = uploads_dir / file_name
+                await tts_engine.synthesize(response_content, output_path)
+                audio_url = f"/api/file-get?path={urllib.parse.quote(str(output_path.absolute()))}"
+                final_atts.append({
+                    "name": "voice_response.wav",
+                    "url": audio_url,
+                    "type": "audio/wav"
+                })
+        except Exception as e:
+            logger.error("Backend TTS synthesis failed: {}", e)
 
 async def ws_endpoint(websocket: WebSocket):
     """Main WebSocket endpoint handler for browser clients."""
@@ -130,15 +157,15 @@ async def ws_endpoint(websocket: WebSocket):
     except Exception:
         try:
             await websocket.close(4001, "Expected auth message")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored error: {}", _e)
         return
 
     if msg.get("type") != "auth":
         try:
             await websocket.close(4001, "Expected auth message")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored error: {}", _e)
         return
 
     if _auth_enabled():
@@ -147,8 +174,8 @@ async def ws_endpoint(websocket: WebSocket):
             await _emit_to_ws(websocket, {"type": "error", "message": "Unauthorized"})
             try:
                 await websocket.close(4003, "Unauthorized")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
             logger.warning("🔒 WebSocket rejected (invalid token) from {}", ws_id)
             return
 
@@ -166,8 +193,8 @@ async def ws_endpoint(websocket: WebSocket):
             pm = agent_manager.pm
             sess = pm.get_or_create(session_id)
             profile_id = sess.metadata.get("profile_id", "default")
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored error: {}", _e)
 
     await _emit_to_ws(
         websocket,
@@ -279,8 +306,8 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict[str, Any]) 
                 ]
                 if p_str:
                     media_paths.append(p_str)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
         else:
             content += f"\n\n[Attached file: {att.get('name', 'file')}]"
         attachments_data.append({"name": att.get("name"), "url": url, "type": att.get("type")})
@@ -387,8 +414,8 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict[str, Any]) 
                     elif cached_profile_id and cached_profile_id != "default":
                         sess.metadata["profile_id"] = cached_profile_id
                         pm.save(sess)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
 
             response_content = ""
             response_media: list[str] = []
@@ -437,31 +464,7 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict[str, Any]) 
             config = agent_manager.config
             final_atts = _build_attachments(response_media)
 
-            if config and config.audio.tts_enabled and config.audio.tts_provider == "supertonic":
-                try:
-                    from shibaclaw.tts.registry import discover_tts_plugins
-                    tts_engines = discover_tts_plugins()
-                    if "supertonic" in tts_engines:
-                        tts_cls = tts_engines["supertonic"]
-                        tts_cfg = {
-                            "tts_voice": config.audio.tts_voice,
-                            "tts_speed": config.audio.tts_speed,
-                            "tts_lang": config.audio.tts_lang,
-                        }
-                        tts_engine = tts_cls(tts_cfg)
-                        uploads_dir = config.workspace_path / "uploads"
-                        uploads_dir.mkdir(parents=True, exist_ok=True)
-                        file_name = f"voice_agent_{uuid.uuid4().hex[:8]}.wav"
-                        output_path = uploads_dir / file_name
-                        await tts_engine.synthesize(response_content, output_path)
-                        audio_url = f"/api/file-get?path={urllib.parse.quote(str(output_path.absolute()))}"
-                        final_atts.append({
-                            "name": "voice_response.wav",
-                            "url": audio_url,
-                            "type": "audio/wav"
-                        })
-                except Exception as e:
-                    logger.error("Backend TTS synthesis failed: {}", e)
+            await _synthesize_tts_response(config, response_content, final_atts)
 
             await _emit_to_session(
                 session_key,
@@ -672,8 +675,8 @@ async def deliver_to_browsers(
             try:
                 await ws.send_text(json.dumps(payload))
                 delivered += 1
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
     else:
         # Original behavior: deliver only to matching session
         raw = json.dumps(payload)
@@ -683,8 +686,8 @@ async def deliver_to_browsers(
                 try:
                     await ws.send_text(raw)
                     delivered += 1
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored error: {}", _e)
     return delivered
 
 
@@ -704,6 +707,6 @@ async def broadcast_notification(notification: dict[str, Any]) -> int:
         try:
             await ws.send_text(json.dumps(payload))
             delivered += 1
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored error: {}", _e)
     return delivered

@@ -41,8 +41,8 @@ def _get_exe_install_dir() -> Path | None:
             if parent == candidate:
                 break
             candidate = parent
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored error: {}", _e)
 
     # Fallback: use the standard default location
     try:
@@ -103,8 +103,8 @@ def _exe_upgrade(
             response.raise_for_status()
             temp_ps1.write_text(response.text, encoding="utf-8")
             downloaded = True
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored error: {}", _e)
 
     if not downloaded:
         bundled_ps1 = get_runtime_root() / "scripts" / "install" / "install.ps1"
@@ -112,8 +112,8 @@ def _exe_upgrade(
             try:
                 shutil.copy2(str(bundled_ps1), str(temp_ps1))
                 downloaded = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
 
     if not downloaded:
         return {"ok": False, "output": "Could not download or locate install.ps1 script."}
@@ -132,14 +132,14 @@ def _exe_upgrade(
                         if progress_cb:
                             try:
                                 progress_cb(current, total)
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                logger.debug("Ignored error: {}", _e)
     except Exception as exc:
         if zip_path.exists():
             try:
                 zip_path.unlink()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
         return {"ok": False, "output": f"Failed to download update package: {exc}"}
 
     # Resolve install_dir robustly — always pass it explicitly to the PS1 script

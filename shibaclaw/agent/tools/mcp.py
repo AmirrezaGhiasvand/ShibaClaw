@@ -164,8 +164,8 @@ class SafeReadStream(ObjectReceiveStream[Any]):
     async def aclose(self) -> None:
         try:
             await self._original_stream.aclose()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored error: {}", _e)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._original_stream, name)
@@ -176,8 +176,8 @@ async def _close_all_mcp_stacks() -> None:
     for name, server_stack in list(_mcp_stacks.items()):
         try:
             await server_stack.aclose()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored error: {}", _e)
     _mcp_stacks.clear()
     _mcp_cleanup_registered = False
 
@@ -231,8 +231,8 @@ async def reconnect_server(name: str) -> bool:
             if server_stack:
                 try:
                     await server_stack.aclose()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored error: {}", _e)
             
             _mcp_sessions.pop(name, None)
             await _connect_mcp_servers_impl({name: cfg}, _registry, _parent_stack, is_reconfigure=False)
@@ -754,8 +754,8 @@ async def _connect_mcp_servers_impl(
             _mcp_stacks.pop(name, None)
             try:
                 await server_stack.aclose()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
 
     if connected_any:
         register_active_mcp_tools(registry)

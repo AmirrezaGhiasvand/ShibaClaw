@@ -542,6 +542,11 @@ function setWorkingState(working) {
 window.restartGateway = async function () {
     const btn = $("btn-restart");
     if (btn.classList.contains("restarting")) return;
+    
+    if (state.restartPoll) {
+        clearInterval(state.restartPoll);
+        state.restartPoll = null;
+    }
 
     btn.classList.add("restarting");
     statusText.textContent = "Restarting...";
@@ -553,13 +558,14 @@ window.restartGateway = async function () {
         if (!res.ok) throw data.error || "Restart failed";
 
         let tries = 0;
-        const poll = setInterval(async () => {
+        state.restartPoll = setInterval(async () => {
             tries++;
             try {
                 const h = await authFetch("/api/gateway-health?_t=" + Date.now());
                 const hd = await h.json();
                 if (hd.reachable) {
-                    clearInterval(poll);
+                    clearInterval(state.restartPoll);
+                    state.restartPoll = null;
                     btn.classList.remove("restarting");
                     setStatusIndicator("ready");
                     fetchStatus();
@@ -567,7 +573,8 @@ window.restartGateway = async function () {
                 }
             } catch (e) { }
             if (tries > 15) {
-                clearInterval(poll);
+                clearInterval(state.restartPoll);
+                state.restartPoll = null;
                 btn.classList.remove("restarting");
                 setStatusIndicator("gateway-down");
             }

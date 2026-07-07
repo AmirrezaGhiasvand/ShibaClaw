@@ -107,9 +107,7 @@ async function downloadAttachment(url, fileName) {
     }
 }
 
-function addUserMessage(content, attachments = []) {
-    activateChat();
-    const group = createMessageGroup("user");
+function _renderMessageBubble(content, attachments = [], autoPlayAudio = false) {
     const bubble = document.createElement("div");
     bubble.className = "message-bubble";
 
@@ -125,10 +123,11 @@ function addUserMessage(content, attachments = []) {
         if (isImage) {
             const img = document.createElement("img");
             img.src = authUrl(file.url);
+            img.onload = () => { if (typeof scrollToBottom === 'function') scrollToBottom(); };
             img.onclick = () => window.open(authUrl(file.url), "_blank");
             bubble.appendChild(img);
         } else if (isAudio) {
-            const player = createAudioPlayer(file, false);
+            const player = createAudioPlayer(file, autoPlayAudio);
             bubble.appendChild(player);
         } else {
             const link = buildFileAttachmentLink(file, () => {
@@ -138,6 +137,13 @@ function addUserMessage(content, attachments = []) {
         }
     });
 
+    return bubble;
+}
+
+function addUserMessage(content, attachments = []) {
+    activateChat();
+    const group = createMessageGroup("user");
+    const bubble = _renderMessageBubble(content, attachments, false);
     group.querySelector(".message-content").appendChild(bubble);
     addTimestamp(group);
     chatHistory.appendChild(group);
@@ -146,35 +152,8 @@ function addUserMessage(content, attachments = []) {
 
 function addAgentMessage(id, content, attachments = []) {
     activateChat();
-
     const group = createMessageGroup("agent");
-    const bubble = document.createElement("div");
-    bubble.className = "message-bubble";
-
-    bubble.innerHTML = renderMarkdown(content);
-    try { bubble.setAttribute("data-raw-content", typeof content === "string" ? content : JSON.stringify(content)); } catch (e) { }
-    enhanceCodeBlocks(bubble);
-
-    attachments.forEach(file => {
-        const isImage = typeof file.type === "string" && file.type.startsWith("image/");
-        const isAudio = typeof file.type === "string" && file.type.startsWith("audio/");
-        if (isImage) {
-            const img = document.createElement("img");
-            img.src = authUrl(file.url);
-            img.onload = () => { if (typeof scrollToBottom === 'function') scrollToBottom(); };
-            img.onclick = () => window.open(authUrl(file.url), "_blank");
-            bubble.appendChild(img);
-        } else if (isAudio) {
-            const player = createAudioPlayer(file, true);
-            bubble.appendChild(player);
-        } else {
-            const link = buildFileAttachmentLink(file, () => {
-                downloadAttachment(file.url, file.name || "file");
-            });
-            bubble.appendChild(link);
-        }
-    });
-
+    const bubble = _renderMessageBubble(content, attachments, true);
     group.querySelector(".message-content").appendChild(bubble);
     addTimestamp(group);
     chatHistory.appendChild(group);
@@ -442,11 +421,9 @@ function renderMarkdown(text) {
                 return `__INLINE_CODE_PLACEHOLDER_${inlineCodes.length - 1}__`;
             });
 
-            // Respect per-user UI preferences for thought blocks
-            let hideThoughts = false;
-            let collapseThoughts = false;
-            try { hideThoughts = localStorage.getItem("shibaclaw_hide_thoughts") === "true"; } catch (e) { }
-            try { collapseThoughts = localStorage.getItem("shibaclaw_collapse_thoughts") === "true"; } catch (e) { }
+            // Preferences cached externally via refreshThoughtPrefs()
+            let hideThoughts = _cachedHideThoughts;
+            let collapseThoughts = _cachedCollapseThoughts;
 
             processedContent = processedContent.replace(/<think>([\s\S]*?)<\/think>/gi, (match, p1) => {
                 let restoredP1 = p1;
@@ -555,6 +532,12 @@ function hideTypingBubble() {
 
 function scrollToBottom() {
     if (scrollToBottom._frame) return;
+    
+    // Do not force scroll if the user is scrolling up to read history
+    const threshold = 150;
+    const isNearBottom = chatHistory.scrollHeight - chatHistory.scrollTop - chatHistory.clientHeight < threshold;
+    if (!isNearBottom && chatHistory.scrollTop > 0) return;
+
     scrollToBottom._frame = requestAnimationFrame(() => {
         scrollToBottom._frame = null;
         chatHistory.scrollTop = chatHistory.scrollHeight;

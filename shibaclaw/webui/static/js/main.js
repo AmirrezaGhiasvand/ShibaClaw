@@ -227,6 +227,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Can't reach server — start anyway (will show errors naturally)
         startApp();
     }
+    
+    // Defer GitHub popup initialization
+    initGithubPopup();
 });
 
 // ── GitHub Star Popup ─────────────────────────────────────────
@@ -255,9 +258,5 @@ function initGithubPopup() {
         }
     }, 45000); // 45 seconds delay
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-    initGithubPopup();
-});
 
 

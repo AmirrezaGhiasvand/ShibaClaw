@@ -1,20 +1,17 @@
 """Telegram channel implementation using python-telegram-bot."""
 
 from __future__ import annotations
-
 import asyncio
 import logging
 import re
 import unicodedata
 from typing import Any, Literal
-
 from loguru import logger
 from pydantic import Field, field_validator
 from telegram import BotCommand, ReplyParameters, Update
 from telegram.error import TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
-
 from shibaclaw.bus.events import OutboundMessage
 from shibaclaw.bus.queue import MessageBus
 from shibaclaw.config.paths import get_media_dir
@@ -45,7 +42,7 @@ def _suppress_ptb_shutdown_logs() -> None:
         try:
             lgr = logging.getLogger(name)
             _PREVIOUS_LEVELS[name] = lgr.level
-            lgr.setLevel(logging.CRITICAL + 1)  # silence everything below catastrophic
+            lgr.setLevel(logging.CRITICAL + 1)
         except Exception:
             pass
 
@@ -60,14 +57,8 @@ def _restore_ptb_shutdown_logs() -> None:
     _PREVIOUS_LEVELS.clear()
 
 
-
-
-TELEGRAM_MAX_MESSAGE_LEN = 4000  # Telegram message character limit
-TELEGRAM_REPLY_CONTEXT_MAX_LEN = (
-    TELEGRAM_MAX_MESSAGE_LEN  # Max length for reply context in user message
-)
-
-
+TELEGRAM_MAX_MESSAGE_LEN = 4000
+TELEGRAM_REPLY_CONTEXT_MAX_LEN = TELEGRAM_MAX_MESSAGE_LEN
 _RE_MD_BOLD1 = re.compile(r"\*\*(.+?)\*\*")
 _RE_MD_BOLD2 = re.compile(r"__(.+?)__")
 _RE_MD_STRIKE = re.compile(r"~~(.+?)~~")
@@ -108,7 +99,6 @@ def _render_table_box(table_lines: list[str]) -> str:
         rows.append(cells)
     if not rows or not has_sep:
         return "\n".join(table_lines)
-
     ncols = max(len(r) for r in rows)
     for r in rows:
         r.extend([""] * (ncols - len(r)))
@@ -130,8 +120,6 @@ def _markdown_to_telegram_html(text: str) -> str:
     """
     if not text:
         return ""
-
-    # 1. Extract and protect code blocks (preserve content from other processing)
     code_blocks: list[str] = []
 
     def save_code_block(m: re.Match) -> str:
@@ -139,8 +127,6 @@ def _markdown_to_telegram_html(text: str) -> str:
         return f"\x00CB{len(code_blocks) - 1}\x00"
 
     text = _RE_MD_BLOCK.sub(save_code_block, text)
-
-    # 1.5. Convert markdown tables to box-drawing (reuse code_block placeholders)
     lines = text.split("\n")
     rebuilt: list[str] = []
     li = 0
@@ -160,8 +146,6 @@ def _markdown_to_telegram_html(text: str) -> str:
             rebuilt.append(lines[li])
             li += 1
     text = "\n".join(rebuilt)
-
-    # 2. Extract and protect inline code
     inline_codes: list[str] = []
 
     def save_inline_code(m: re.Match) -> str:
@@ -169,8 +153,6 @@ def _markdown_to_telegram_html(text: str) -> str:
         return f"\x00IC{len(inline_codes) - 1}\x00"
 
     text = _RE_MD_INLINE.sub(save_inline_code, text)
-
-    # 3. Extract and protect links BEFORE HTML escaping to preserve URLs
     link_placeholders: list[tuple[str, str]] = []
 
     def save_link(m: re.Match) -> str:
@@ -178,52 +160,29 @@ def _markdown_to_telegram_html(text: str) -> str:
         return f"\x00LK{len(link_placeholders) - 1}\x00"
 
     text = _RE_MD_LINK.sub(save_link, text)
-
-    # 4. Headers # Title -> just the title text
     text = _RE_MD_HEADER.sub(r"\1", text)
-
-    # 5. Blockquotes > text -> just the text (before HTML escaping)
     text = _RE_MD_BLOCKQUOTE.sub(r"\1", text)
-
-    # 6. Escape HTML special characters
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-    # 7. Restore links with proper HTML (link text is escaped, URL is preserved raw)
     for i, (link_text, url) in enumerate(link_placeholders):
         escaped_text = link_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         text = text.replace(f"\x00LK{i}\x00", f'<a href="{url}">{escaped_text}</a>')
-
-    # 8. Bold+Italic ***text*** (must come before bold/italic)
     text = _RE_MD_BOLD_ITALIC.sub(r"<b><i>\1</i></b>", text)
-
-    # 9. Bold **text** or __text__
     text = _RE_MD_BOLD1.sub(r"<b>\1</b>", text)
     text = _RE_MD_BOLD2.sub(r"<b>\1</b>", text)
-
-    # 10. Italic _text_ (avoid matching inside words like some_var_name)
     text = _RE_MD_ITALIC.sub(r"<i>\1</i>", text)
-
-    # 11. Strikethrough ~~text~~
     text = _RE_MD_STRIKE.sub(r"<s>\1</s>", text)
-
-    # 12. Bullet lists - item -> • item
     text = _RE_MD_BULLET.sub("• ", text)
-
-    # 13. Restore inline code with HTML tags
     for i, code in enumerate(inline_codes):
         escaped = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         text = text.replace(f"\x00IC{i}\x00", f"<code>{escaped}</code>")
-
-    # 14. Restore code blocks with HTML tags
     for i, code in enumerate(code_blocks):
         escaped = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         text = text.replace(f"\x00CB{i}\x00", f"<pre><code>{escaped}</code></pre>")
-
     return text
 
 
 _SEND_MAX_RETRIES = 3
-_SEND_RETRY_BASE_DELAY = 0.5  # seconds, doubled each retry
+_SEND_RETRY_BASE_DELAY = 0.5
 
 
 class TelegramConfig(Base):
@@ -251,14 +210,11 @@ class TelegramConfig(Base):
 class TelegramChannel(BaseChannel):
     """
     Telegram channel using long polling.
-
     Simple and reliable - no webhook/public IP needed.
     """
 
     name = "telegram"
     display_name = "Telegram"
-
-    # Commands registered with Telegram's command menu
     BOT_COMMANDS = [
         BotCommand("start", "Start the bot"),
         BotCommand("new", "Start a new conversation"),
@@ -277,16 +233,14 @@ class TelegramChannel(BaseChannel):
         super().__init__(config, bus)
         self.config: TelegramConfig = config
         self._app: Application | None = None
-        self._chat_ids: dict[str, int] = {}  # sender_id → chat_id (capped at 500)
+        self._chat_ids: dict[str, int] = {}
         self._CHAT_IDS_CAP = 500
-        self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> typing loop task
+        self._typing_tasks: dict[str, asyncio.Task] = {}
         self._media_group_buffers: dict[str, dict] = {}
         self._media_group_tasks: dict[str, asyncio.Task] = {}
         self._message_threads: dict[tuple[str, int], int] = {}
         self._THREADS_CAP = 1000
-        self._progress_messages: dict[
-            tuple[str, int | None], int
-        ] = {}
+        self._progress_messages: dict[tuple[str, int | None], int] = {}
         self._PROGRESS_CAP = 500
         self._bot_user_id: int | None = None
         self._bot_username: str | None = None
@@ -295,19 +249,15 @@ class TelegramChannel(BaseChannel):
         """Preserve Telegram's legacy id|username allowlist matching."""
         if super().is_allowed(sender_id):
             return True
-
         allow_list = getattr(self.config, "allow_from", [])
         if not allow_list or "*" in allow_list:
             return False
-
         sender_str = str(sender_id)
         if sender_str.count("|") != 1:
             return False
-
         sid, username = sender_str.split("|", 1)
         if not sid.isdigit() or not username:
             return False
-
         return sid in allow_list or username in allow_list
 
     def _build_app(self, proxy: str | None = None) -> None:
@@ -336,7 +286,6 @@ class TelegramChannel(BaseChannel):
 
     async def start_for_sending(self) -> None:
         """Initialize the bot for outbound-only sending without starting inbound polling.
-
         Calls Application.initialize() so HTTP requests work, but never calls
         start_polling() so only one instance (the gateway) polls Telegram.
         """
@@ -355,74 +304,50 @@ class TelegramChannel(BaseChannel):
         if not self.config.token:
             logger.error("Telegram bot token not configured")
             return
-
         self._running = True
-
         proxy = self.config.proxy or None
         self._build_app(proxy=proxy)
         self._app.add_error_handler(self._on_error)
-
-        # Add command handlers (inbound only — not needed for sending-only mode)
         self._app.add_handler(CommandHandler("start", self._on_start))
         self._app.add_handler(CommandHandler("new", self._forward_command))
         self._app.add_handler(CommandHandler("stop", self._forward_command))
         self._app.add_handler(CommandHandler("restart", self._forward_command))
         self._app.add_handler(CommandHandler("help", self._on_help))
-
-        # Add message handler for text, photos, voice, documents
         _content_filter = (
-            filters.TEXT
-            | filters.PHOTO
-            | filters.VOICE
-            | filters.AUDIO
-            | filters.Document.ALL
+            filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL
         ) & ~filters.COMMAND
         self._app.add_handler(MessageHandler(_content_filter, self._on_message))
         self._app.add_handler(
             MessageHandler(filters.UpdateType.EDITED_MESSAGE & _content_filter, self._on_message)
         )
-
         logger.info("Starting Telegram bot (polling mode)...")
-
-        # Initialize and start polling
         await self._app.initialize()
         await self._app.start()
-
-        # Get bot info and register command menu
         bot_info = await self._app.bot.get_me()
         self._bot_user_id = getattr(bot_info, "id", None)
         self._bot_username = getattr(bot_info, "username", None)
         logger.info("Telegram bot @{} connected", bot_info.username)
-
         try:
             await self._app.bot.set_my_commands(self.BOT_COMMANDS)
             logger.debug("Telegram bot commands registered")
         except Exception as e:
             logger.warning("Failed to register bot commands: {}", e)
-
-        # Start polling (this runs until stopped)
         await self._app.updater.start_polling(
             allowed_updates=["message", "edited_message"],
             drop_pending_updates=True,
         )
-
-        # Keep running until stopped
         while self._running:
             await asyncio.sleep(1)
 
     async def stop(self) -> None:
         """Stop the Telegram bot."""
         self._running = False
-
-        # Cancel all typing indicators
         for chat_id in list(self._typing_tasks):
             self._stop_typing(chat_id)
-
         for task in self._media_group_tasks.values():
             task.cancel()
         self._media_group_tasks.clear()
         self._media_group_buffers.clear()
-
         if self._app:
             logger.info("Stopping Telegram bot...")
             _suppress_ptb_shutdown_logs()
@@ -455,15 +380,10 @@ class TelegramChannel(BaseChannel):
         """Send a message through Telegram."""
         if not self._app:
             raise RuntimeError("Telegram bot not running")
-
-        # Only stop typing indicator for final responses
         if not msg.metadata.get("_progress", False):
             self._stop_typing(msg.chat_id)
-
         original_chat_id = str(msg.chat_id)
-
         if original_chat_id == "auto" or not original_chat_id.lstrip("-").isdigit():
-            # Cross-channel and WebUI usage often send `chat_id: auto`.
             allow_list = getattr(self.config, "allow_from", [])
             valid_ids = []
             for uid in allow_list:
@@ -474,8 +394,6 @@ class TelegramChannel(BaseChannel):
                         valid_ids.append(part)
                 elif uid_str.isdigit():
                     valid_ids.append(uid_str)
-
-            # Fallback to last non-empty known chat_id from recent incoming messages.
             if not valid_ids and self._chat_ids:
                 known_chat_ids = list({str(v) for v in self._chat_ids.values()})
                 if len(known_chat_ids) == 1:
@@ -484,7 +402,6 @@ class TelegramChannel(BaseChannel):
                         "Auto-resolving Telegram chat_id from last active user {}",
                         known_chat_ids[0],
                     )
-
             if len(valid_ids) == 1:
                 chat_id = int(valid_ids[0])
                 logger.debug(
@@ -518,15 +435,12 @@ class TelegramChannel(BaseChannel):
         thread_kwargs = {}
         if message_thread_id is not None:
             thread_kwargs["message_thread_id"] = message_thread_id
-
         reply_params = None
         if self.config.reply_to_message:
             if reply_to_message_id:
                 reply_params = ReplyParameters(
                     message_id=reply_to_message_id, allow_sending_without_reply=True
                 )
-
-        # Send media files
         for media_path in msg.media or []:
             try:
                 media_type = self._get_media_type(media_path)
@@ -542,8 +456,6 @@ class TelegramChannel(BaseChannel):
                     if media_type in ("voice", "audio")
                     else "document"
                 )
-
-                # Telegram Bot API accepts HTTP(S) URLs directly for media params.
                 if self._is_remote_media_url(media_path):
                     ok, error = validate_url_target(media_path)
                     if not ok:
@@ -556,7 +468,6 @@ class TelegramChannel(BaseChannel):
                         **thread_kwargs,
                     )
                     continue
-
                 from pathlib import Path
 
                 await self._call_with_retry(
@@ -575,21 +486,14 @@ class TelegramChannel(BaseChannel):
                     reply_parameters=reply_params,
                     **thread_kwargs,
                 )
-
-        # Send text content
         if msg.content and msg.content != "[empty message]":
             is_progress = msg.metadata.get("_progress", False)
-
             for chunk in split_message(msg.content, TELEGRAM_MAX_MESSAGE_LEN):
                 if is_progress:
-                    # Update a single progress message instead of sending many fragment messages
                     await self._send_or_edit_progress(chat_id, chunk, reply_params, thread_kwargs)
                 else:
-                    # Final message(s)
                     await self._send_with_streaming(chat_id, chunk, reply_params, thread_kwargs)
-
             if not is_progress:
-                # Final send completed, clear any transient progress tracking for this chat/thread
                 thread_id = thread_kwargs.get("message_thread_id") if thread_kwargs else None
                 await self._clear_progress_message(chat_id, thread_id)
 
@@ -636,7 +540,6 @@ class TelegramChannel(BaseChannel):
             return True
         except Exception as e:
             logger.warning("Failed to edit progress message {}: {}", message_id, e)
-
         try:
             await self._call_with_retry(
                 self._app.bot.edit_message_text,
@@ -660,14 +563,11 @@ class TelegramChannel(BaseChannel):
         thread_id = thread_kwargs.get("message_thread_id") if thread_kwargs else None
         key = self._progress_key(chat_id, thread_id)
         existing_id = self._progress_messages.get(key)
-
         if existing_id is not None:
             success = await self._edit_progress_message(chat_id, existing_id, text)
             if success:
                 return
             self._progress_messages.pop(key, None)
-
-        # Create new progress message
         try:
             html = _markdown_to_telegram_html(text)
             msg_obj = await self._call_with_retry(
@@ -691,7 +591,6 @@ class TelegramChannel(BaseChannel):
             except Exception as e2:
                 logger.error("Error sending Telegram progress message: {}", e2)
                 return
-
         if msg_obj and getattr(msg_obj, "message_id", None) is not None:
             self._progress_messages[key] = msg_obj.message_id
             self._cap_progress_messages()
@@ -720,7 +619,6 @@ class TelegramChannel(BaseChannel):
             return
         except Exception as e:
             logger.warning("HTML parse failed, falling back to plain text: {}", e)
-
         try:
             await self._call_with_retry(
                 self._app.bot.send_message,
@@ -748,11 +646,9 @@ class TelegramChannel(BaseChannel):
         """Handle /start command."""
         if not update.message or not update.effective_user:
             return
-
         sender_id = self._sender_id(update.effective_user)
         if not self.is_allowed(sender_id):
             return
-
         user = update.effective_user
         await update.message.reply_text(
             f"👋 Hi {user.first_name}! I'm shibaclaw.\n\n"
@@ -764,11 +660,9 @@ class TelegramChannel(BaseChannel):
         """Handle /help command."""
         if not update.message or not update.effective_user:
             return
-
         sender_id = self._sender_id(update.effective_user)
         if not self.is_allowed(sender_id):
             return
-
         await update.message.reply_text(
             "🐕 shibaclaw commands:\n"
             "/new — Start a new conversation\n"
@@ -912,19 +806,14 @@ class TelegramChannel(BaseChannel):
         """Allow group messages based on the configured group_policy."""
         if message.chat.type == "private" or self.config.group_policy == "open":
             return True
-
         text = message.text or ""
         caption = message.caption or ""
         combined_text = f"{text} {caption}".lower()
         policy = self.config.group_policy
-
-        # Check trigger words if policy allows it
         if policy in ("trigger", "mention_or_trigger"):
             for word in self.config.trigger_words:
                 if word.lower() in combined_text:
                     return True
-
-        # Check mentions and replies if policy allows it
         if policy in ("mention", "mention_or_trigger"):
             bot_id, bot_username = await self._ensure_bot_identity()
             if bot_username:
@@ -942,11 +831,9 @@ class TelegramChannel(BaseChannel):
                     bot_id,
                 ):
                     return True
-
             reply_msg = getattr(message, "reply_to_message", None)
             reply_user = getattr(reply_msg, "from_user", None)
             return bool(bot_id and reply_user and reply_user.id == bot_id)
-
         return False
 
     def _remember_thread_context(self, message) -> None:
@@ -978,30 +865,23 @@ class TelegramChannel(BaseChannel):
         message = update.edited_message or update.message
         if not message or not update.effective_user:
             return
-
         user = update.effective_user
         chat_id = message.chat_id
         sender_id = self._sender_id(user)
-
         if not self.is_allowed(sender_id):
             logger.debug("Telegram: ignoring message from unauthorised sender {}", sender_id)
             return
-
         self._remember_thread_context(message)
-
         self._chat_ids[sender_id] = chat_id
         if len(self._chat_ids) > self._CHAT_IDS_CAP:
             oldest = next(iter(self._chat_ids))
             del self._chat_ids[oldest]
-
         content_parts = []
         media_paths = []
-
         if message.text:
             content_parts.append(message.text)
         if message.caption:
             content_parts.append(message.caption)
-
         current_media_paths, current_media_parts = await self._download_message_media(
             message, add_failure_content=True
         )
@@ -1009,7 +889,6 @@ class TelegramChannel(BaseChannel):
         content_parts.extend(current_media_parts)
         if current_media_paths:
             logger.debug("Downloaded message media to {}", current_media_paths[0])
-
         reply = getattr(message, "reply_to_message", None)
         if reply is not None:
             reply_ctx = self._extract_reply_context(message)
@@ -1023,25 +902,17 @@ class TelegramChannel(BaseChannel):
             if tag:
                 content_parts.insert(0, tag)
         content = "\n".join(content_parts) if content_parts else "[empty message]"
-
         str_chat_id = str(chat_id)
-
         is_group = message.chat.type in ("group", "supergroup")
         sender_name = user.first_name or user.username or sender_id
-
         if is_group:
             content = f"{sender_name}: {content}"
-
         metadata = self._build_message_metadata(message, user)
         session_key = self._derive_topic_session_key(message)
-
         should_respond = await self._is_group_message_for_bot(message)
-
         if is_group and not should_respond:
             metadata["no_reply"] = True
-
         logger.debug("Telegram message from {}: {}...", sender_id, content[:50])
-
         if media_group_id := getattr(message, "media_group_id", None):
             key = f"{str_chat_id}:{media_group_id}"
             if key not in self._media_group_buffers:
@@ -1065,10 +936,8 @@ class TelegramChannel(BaseChannel):
             if key not in self._media_group_tasks:
                 self._media_group_tasks[key] = asyncio.create_task(self._flush_media_group(key))
             return
-
         if not metadata.get("no_reply"):
             self._start_typing(str_chat_id)
-
         await self._handle_message(
             sender_id=sender_id,
             chat_id=str_chat_id,
@@ -1098,7 +967,6 @@ class TelegramChannel(BaseChannel):
 
     def _start_typing(self, chat_id: str) -> None:
         """Start sending 'typing...' indicator for a chat."""
-        # Cancel any existing typing task for this chat
         self._stop_typing(chat_id)
         self._typing_tasks[chat_id] = asyncio.create_task(self._typing_loop(chat_id))
 
@@ -1115,7 +983,7 @@ class TelegramChannel(BaseChannel):
         except (ValueError, TypeError):
             return
         try:
-            for _ in range(60):  # Limit to 4 minutes to prevent infinite tasks
+            for _ in range(60):
                 if not self._app:
                     break
                 await self._app.bot.send_chat_action(chat_id=numeric_id, action="typing")
@@ -1131,7 +999,6 @@ class TelegramChannel(BaseChannel):
 
     async def _on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Log polling / handler errors; auto-stop on Conflict.
-
         A Conflict error means another bot instance is already polling,
         so continuing would just produce an infinite error loop.
         Stop polling and keep the bot available for outbound sending only.
@@ -1150,7 +1017,6 @@ class TelegramChannel(BaseChannel):
                 except Exception as e:
                     logger.debug("Error stopping updater after Conflict: {}", e)
             return
-
         logger.error("Telegram error: {}", context.error)
 
     def _get_extension(
@@ -1171,14 +1037,11 @@ class TelegramChannel(BaseChannel):
             }
             if mime_type in ext_map:
                 return ext_map[mime_type]
-
         type_map = {"image": ".jpg", "voice": ".ogg", "audio": ".mp3", "file": ""}
         if ext := type_map.get(media_type, ""):
             return ext
-
         if filename:
             from pathlib import Path
 
             return "".join(Path(filename).suffixes)
-
         return ""

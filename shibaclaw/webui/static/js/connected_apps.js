@@ -75,29 +75,14 @@
     _renderPanel(container);
   };
 
-  /* ── auto-hook openModal ──────────────────────────────────────── */
-  (function _hookOpenModal() {
-    function _patch(original) {
-      return async function (id) {
-        const result = original ? await original.call(this, id) : undefined;
-        if (id === 'connected-apps-modal') {
-          if (typeof window.loadConnectedAppsPanel === 'function') {
-            window.loadConnectedAppsPanel();
-          }
-        }
-        return result;
-      };
+  /* ── auto-hook modal opens ──────────────────────────────────────── */
+  document.addEventListener('shiba-modal-opened', function (e) {
+    if (e.detail && e.detail.id === 'connected-apps-modal') {
+      if (typeof window.loadConnectedAppsPanel === 'function') {
+        window.loadConnectedAppsPanel();
+      }
     }
-    if (typeof window.openModal === 'function') {
-      window.openModal = _patch(window.openModal);
-    } else {
-      document.addEventListener('DOMContentLoaded', function () {
-        if (typeof window.openModal === 'function') {
-          window.openModal = _patch(window.openModal);
-        }
-      }, { once: true });
-    }
-  })();
+  });
 
   /* ── data fetching ───────────────────────────────────────────────────── */
   async function _loadApps() {
@@ -558,8 +543,8 @@
 
   /* ── utils ───────────────────────────────────────────────────────────────── */
   function _esc(str) {
-    if (typeof escapeHtml === 'function') {
-      return escapeHtml(str);
+    if (typeof window.escapeHtml === 'function') {
+      return window.escapeHtml(str);
     }
     return String(str || '')
       .replace(/&/g, '&amp;')

@@ -1,21 +1,17 @@
 """AutomationService — unified cron + heartbeat scheduler.
-
 Replaces both CronService (shibaclaw/cron/) and HeartbeatService
 (shibaclaw/heartbeat/).  A single asyncio event-driven timer loop manages
 jobs of two kinds:
-
   - ``scheduled``  fire an agent turn with a fixed message (ex-cron)
   - ``heartbeat``  read a .md file; let the LLM decide whether to act
                    (ex-heartbeat, including tool-call decision phase and
                    evaluate_response post-run silencing)
-
 Persistence
 -----------
 Jobs are stored in ``automation.json`` (same directory as the old
 ``jobs.json``).  On first start, if ``automation.json`` is missing but
 ``jobs.json`` exists, a one-shot migration copies all legacy cron jobs
 over as *scheduled* jobs and writes ``automation.json``.
-
 The heartbeat configuration previously embedded in ``TASK.md``
 frontmatter (session_key, targets, profile_id) is now part of each job's
 ``AutomationPayload``.  The ``TASK.md`` body (Active Tasks section)
@@ -23,7 +19,6 @@ is still read at runtime — it is **not** stored in the job definition.
 """
 
 from __future__ import annotations
-
 import asyncio
 import json
 import re
@@ -34,15 +29,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
-
 from loguru import logger
-
 from .types import AutomationJob, AutomationJobState, AutomationPayload, AutomationSchedule
-
-# ---------------------------------------------------------------------------
-# Virtual tool descriptor used in the heartbeat decision phase
-# (identical to the one in the old HeartbeatService)
-# ---------------------------------------------------------------------------
 
 _HEARTBEAT_TOOL = [
     {
@@ -68,19 +56,9 @@ _HEARTBEAT_TOOL = [
         },
     }
 ]
-
-# ---------------------------------------------------------------------------
-# Callback type aliases
-# ---------------------------------------------------------------------------
-
 OnScheduledCallback = Callable[["AutomationJob"], Awaitable[Optional[str]]]
 OnHeartbeatCallback = Callable[..., Awaitable[str]]
 OnNotifyCallback = Callable[..., Awaitable[None]]
-
-
-# ---------------------------------------------------------------------------
-# Schedule helpers (ported verbatim from cron/service.py)
-# ---------------------------------------------------------------------------
 
 
 def _now_ms() -> int:
@@ -132,11 +110,6 @@ def _parse_schedule_kind(raw_kind: Any, job_name: str) -> str:
     return "cron"
 
 
-# ---------------------------------------------------------------------------
-# Heartbeat file helpers (ported from heartbeat/service.py)
-# ---------------------------------------------------------------------------
-
-
 def _strip_comments(content: str) -> str:
     return re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
 
@@ -182,13 +155,11 @@ def _extract_named_task_sections(content: str) -> list[tuple[str, str]]:
             relevant = relevant[: boundary.start()]
     else:
         relevant = cleaned
-
     heading_re = re.compile(
         r"(?im)^(?:##\s*Task:\s*(?P<h2_task>[^\n]+)|###\s*Task:\s*(?P<h3_task>[^\n]+)|##\s+(?P<h2_name>[^\n#][^\n]*))\s*$"
     )
     matches = list(heading_re.finditer(relevant))
     sections: list[tuple[str, str]] = []
-
     for index, match in enumerate(matches):
         body_start = match.end()
         body_end = matches[index + 1].start() if index + 1 < len(matches) else len(relevant)
@@ -198,7 +169,6 @@ def _extract_named_task_sections(content: str) -> list[tuple[str, str]]:
         if not section_name:
             continue
         sections.append((section_name, _sanitize_task_body(relevant[body_start:body_end])))
-
     return sections
 
 
@@ -217,7 +187,6 @@ def _extract_active_tasks(content: str, job_name: str | None = None) -> str:
             relevant = relevant[: boundary.start()]
     else:
         relevant = cleaned
-
     if job_name:
         task_body = _find_task_section(relevant, job_name)
         if task_body is None:
@@ -225,18 +194,11 @@ def _extract_active_tasks(content: str, job_name: str | None = None) -> str:
         if task_body:
             return _sanitize_task_body(task_body)
         return _sanitize_task_body(relevant)
-
     return _sanitize_task_body(relevant)
-
-
-# ---------------------------------------------------------------------------
-# AutomationService
-# ---------------------------------------------------------------------------
 
 
 class AutomationService:
     """Unified automation scheduler.
-
     Parameters
     ----------
     store_path:
@@ -281,11 +243,8 @@ class AutomationService:
         self._on_notify = on_notify
         self._provider = provider
         self._model = model
-
         self._jobs: dict[str, AutomationJob] = {}
         self._save_lock = asyncio.Lock()
-        # Protect actual filesystem writes so sync and async paths don't clobber
-        # each other. Async callers also use `_save_lock` to sequence writes.
         self._io_lock = threading.Lock()
         self._timer_task: asyncio.Task | None = None
         self._wake = asyncio.Event()
@@ -293,16 +252,9 @@ class AutomationService:
         self._save_task: asyncio.Task | None = None
         self._save_requested = False
         self._task_cache: dict[str, tuple[int | None, str, list[tuple[str, str]]]] = {}
-
-        # Suppress repeated warnings
         self._provider_warning_logged = False
         self._last_mtime: float = 0.0
-
         self._load()
-
-    # ------------------------------------------------------------------
-    # Persistence
-    # ------------------------------------------------------------------
 
     def _load(self) -> None:
         """Load jobs from automation.json; fall back to migrating jobs.json."""
@@ -332,11 +284,9 @@ class AutomationService:
                 p = d.get("payload", {})
                 st = d.get("state", {})
                 now = _now_ms()
-                # Determine schedule kind robustly (accepts missing or invalid kind)
                 kind = AutomationService._parse_schedule_kind(
                     s.get("kind"), s, d.get("name", "Migrated job")
                 )
-
                 job = AutomationJob(
                     id=d.get("id", str(uuid.uuid4())[:8]),
                     name=d.get("name", "Migrated job"),
@@ -381,7 +331,6 @@ class AutomationService:
         try:
             self._store_path.parent.mkdir(parents=True, exist_ok=True)
             data = {"jobs": [self._job_to_dict(j) for j in self._jobs.values()]}
-            # Use a temporary file + atomic replace to avoid partial writes
             tmp_path = self._store_path.with_suffix(".tmp")
             with self._io_lock:
                 tmp_path.write_text(
@@ -408,7 +357,6 @@ class AutomationService:
         except RuntimeError:
             self._save_unlocked()
             return
-
         self._save_requested = True
         if self._save_task and not self._save_task.done():
             return
@@ -424,10 +372,6 @@ class AutomationService:
             self._save_task = None
             if self._save_requested:
                 self._request_save()
-
-    # ------------------------------------------------------------------
-    # Serialisation
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _job_to_dict(j: AutomationJob) -> dict:
@@ -468,14 +412,12 @@ class AutomationService:
     @staticmethod
     def _parse_schedule_kind(raw_kind: Any, s: dict, job_name: str) -> str:
         """Parse or infer a schedule kind from serialized data; warn on invalid kinds.
-
         - `raw_kind`: value read from the serialized `kind` field (may be None)
         - `s`: the raw schedule dict (used to infer kind from fields)
         - `job_name`: used for logging context
         """
         if raw_kind in ("at", "every", "cron"):
             return raw_kind
-        # Infer from schedule fields when `kind` is missing or non-standard
         if s.get("expr"):
             return "cron"
         if s.get("everyMs") or s.get("every_ms"):
@@ -529,10 +471,6 @@ class AutomationService:
                 run_count=st.get("runCount") or 0,
             ),
         )
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def add_job(
         self,
@@ -672,7 +610,6 @@ class AutomationService:
         enabled_count = 0
         scheduled_count = 0
         heartbeats_count = 0
-
         for j in jobs:
             if j.enabled:
                 enabled_count += 1
@@ -680,7 +617,6 @@ class AutomationService:
                 scheduled_count += 1
             elif j.payload.kind == "heartbeat":
                 heartbeats_count += 1
-
         return {
             "running": self._running,
             "jobs": len(self._jobs),
@@ -696,22 +632,15 @@ class AutomationService:
         self._model = model
         logger.info("AutomationService: reconfigured")
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
-
     async def start(self) -> None:
         if self._running:
             return
         self._running = True
-
         now = _now_ms()
-        # Fast-forward missed cron/interval jobs so they don't fire immediately on boot
         for j in self._jobs.values():
             if j.enabled and j.schedule.kind != "at":
                 if j.state.next_run_at_ms and j.state.next_run_at_ms < now:
                     j.state.next_run_at_ms = _compute_next_run(j.schedule, now) or 0
-
         await self._fire_overdue_at_jobs()
         self._rearm()
         logger.info(
@@ -731,10 +660,6 @@ class AutomationService:
             self._save_requested = False
             self._save_unlocked()
         logger.info("AutomationService: stopped")
-
-    # ------------------------------------------------------------------
-    # Internal timer
-    # ------------------------------------------------------------------
 
     def _get_next_wake_ms(self) -> int | None:
         candidates = [
@@ -775,10 +700,6 @@ class AutomationService:
             and j.schedule.at_ms <= now
             and not j.state.last_run_at_ms
         ]
-        # Fire overdue one-shot jobs immediately. Create background tasks
-        # and await them so that `start()` only returns once these jobs
-        # have been executed (this makes startup behaviour deterministic
-        # for tests and callers that expect immediate execution).
         tasks: list[asyncio.Task] = []
         for job in overdue:
             logger.info(
@@ -787,7 +708,6 @@ class AutomationService:
                 job.schedule.at_ms,
             )
             tasks.append(asyncio.create_task(self._run_job_bg(job, force=True)))
-
         if tasks:
             await asyncio.gather(*tasks)
 
@@ -798,7 +718,6 @@ class AutomationService:
             for j in self._jobs.values()
             if j.enabled and j.state.next_run_at_ms and now >= j.state.next_run_at_ms
         ]
-        # Advance next_run before dispatching so we don't double-fire
         for job in due:
             if job.schedule.kind == "at":
                 job.state.next_run_at_ms = 0
@@ -823,11 +742,9 @@ class AutomationService:
         except FileNotFoundError:
             self._task_cache.pop(key, None)
             raise
-
         cached = self._task_cache.get(key)
         if cached and cached[0] == mtime_ns:
             return cached[1], cached[2]
-
         raw_content = hb_path.read_text(encoding="utf-8")
         sections = _extract_named_task_sections(raw_content)
         self._task_cache[key] = (mtime_ns, raw_content, sections)
@@ -845,28 +762,16 @@ class AutomationService:
         sections = sections if sections is not None else _extract_named_task_sections(raw_content)
         if not sections:
             return _extract_active_tasks(raw_content, job.name)
-
         target_name = _normalize_task_name(job.name)
         for section_name, body in sections:
             if _normalize_task_name(section_name) == target_name:
                 return body
-
-        # Precompute the set of managed task names for O(1) lookup
-        # This prevents O(M*N) string normalizations when filtering sections
         managed_tasks = {_normalize_task_name(j.name) for j in self._jobs.values()}
-
-        # The global/system heartbeat should only consume ad-hoc task sections.
-        # Sections already managed by automation jobs are executed through their
-        # own job state and schedule, so including them here causes duplicate runs.
         return "\n\n".join(
             body
             for section_name, body in sections
             if body and _normalize_task_name(section_name) not in managed_tasks
         ).strip()
-
-    # ------------------------------------------------------------------
-    # Execution
-    # ------------------------------------------------------------------
 
     async def _execute(self, job: AutomationJob, force: bool = False) -> None:
         start_ms = _now_ms()
@@ -876,15 +781,12 @@ class AutomationService:
             job.payload.kind,
             job.id,
         )
-
         job.state.last_status = "running"
-
         try:
             if job.payload.kind == "scheduled":
                 await self._execute_scheduled(job)
             else:
                 await self._execute_heartbeat(job)
-
             if job.state.last_status != "skipped":
                 job.state.last_status = "ok"
                 job.state.last_error = ""
@@ -927,19 +829,16 @@ class AutomationService:
             job.state.last_status = "skipped"
             return
         self._provider_warning_logged = False
-
         hb_path = self._workspace / (job.payload.heartbeat_file or "TASK.md")
         if not hb_path.exists():
             logger.debug("AutomationService: heartbeat file '{}' not found, skipping", hb_path)
             job.state.last_status = "skipped"
             return
-
         try:
             raw_content, sections = self._load_task_document(hb_path)
         except Exception as exc:
             logger.warning("AutomationService: cannot read '{}': {}", hb_path, exc)
             return
-
         active_tasks = self._resolve_heartbeat_tasks(job, raw_content, sections=sections)
         if not active_tasks:
             logger.debug(
@@ -949,20 +848,14 @@ class AutomationService:
             )
             job.state.last_status = "skipped"
             return
-
-        # --- Phase 1: decide (via virtual tool call) ---
         action, tasks = await self._heartbeat_decide(active_tasks)
         if action != "run":
             logger.info("AutomationService: heartbeat '{}' → skip (LLM decision)", job.name)
             job.state.last_status = "skipped"
             return
-
         logger.info("AutomationService: heartbeat '{}' → run: {}", job.name, tasks[:80])
-
-        # --- Phase 2: execute ---
         if not self._on_heartbeat:
             return
-
         session_key = job.payload.session_key or job.name or f"automation:{job.id}"
         response = await self._on_heartbeat(
             tasks,
@@ -970,8 +863,6 @@ class AutomationService:
             profile_id=job.payload.profile_id,
             targets=job.payload.targets or None,
         )
-
-        # --- Phase 3: evaluate & notify ---
         if response and self._on_notify:
             should_notify = True
             try:

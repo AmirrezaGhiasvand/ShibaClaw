@@ -120,7 +120,14 @@ function _startOAuthJobPoll(scope, jobId, onUpdate) {
     _clearOAuthPoll(scope);
     const polls = state.oauthPolls || (state.oauthPolls = {});
     let inFlight = false;
+    let pollCount = 0;
+    const MAX_POLLS = 150; // 5 minutes at 2s interval — prevents infinite polling
     polls[scope] = setInterval(async () => {
+        if (++pollCount > MAX_POLLS) {
+            console.warn("OAuth poll for", scope, "exceeded max attempts, stopping.");
+            _clearOAuthPoll(scope);
+            return;
+        }
         if (inFlight) return;
         inFlight = true;
         try {
@@ -287,39 +294,7 @@ function _toggleAutoSection(key, headerEl) {
     _saveAutoCollapsed();
 }
 
-function _formatSchedule(s) {
-    if (s.kind === "cron") {
-        const tz = s.tz ? ` (${s.tz})` : "";
-        return `cron: ${s.expr}${tz}`;
-    }
-    if (s.kind === "every" && s.everyMs) {
-        const ms = s.everyMs;
-        if (ms % 3600000 === 0) return `every ${ms / 3600000}h`;
-        if (ms % 60000 === 0) return `every ${ms / 60000}m`;
-        if (ms % 1000 === 0) return `every ${ms / 1000}s`;
-        return `every ${ms}ms`;
-    }
-    if (s.kind === "at" && s.atMs) {
-        return new Date(s.atMs).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    }
-    return s.kind;
-}
-
-function _timeAgo(ms) {
-    if (!ms) return "";
-    const sec = Math.floor((Date.now() - ms) / 1000);
-    if (sec < 60) return "just now";
-    if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
-    if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
-    return `${Math.floor(sec / 86400)}d ago`;
-}
-
-function _cronStatusClass(job) {
-    if (!job.enabled) return "st-disabled";
-    if (job.state.lastStatus === "error") return "st-error";
-    if (job.state.lastStatus === "ok") return "st-ok";
-    return "st-pending";
-}
+// _formatSchedule, _timeAgo, _cronStatusClass → consolidated in utils.js as formatSchedule, timeAgo, jobStatusClass
 
 async function loadCronSection() {
     const list = $("cron-list");
@@ -339,8 +314,8 @@ async function loadCronSection() {
         for (const job of jobs) {
             const row = document.createElement("div");
             row.className = "auto-row";
-            const stCls = _cronStatusClass(job);
-            const meta = job.state.lastRunAtMs ? _timeAgo(job.state.lastRunAtMs) : _formatSchedule(job.schedule);
+            const stCls = jobStatusClass(job);
+            const meta = job.state.lastRunAtMs ? timeAgo(job.state.lastRunAtMs) : formatSchedule(job.schedule);
             const safeName = escapeHtml(job.name || job.payload.message.slice(0, 30));
             row.innerHTML = `
                 <div class="auto-status ${stCls}"></div>
@@ -393,8 +368,8 @@ async function loadHeartbeatSection() {
         if (data.session_key) info += `<span class="hb-label">Session:</span> ${escapeHtml(data.session_key)}<br>`;
         if (data.profile_id) info += `<span class="hb-label">Profile:</span> ${escapeHtml(data.profile_id)}<br>`;
         if (data.targets && Object.keys(data.targets).length) info += `<span class="hb-label">Targets:</span> ${escapeHtml(Object.entries(data.targets).map(([channel, target]) => `${channel}:${target}`).join(", "))}<br>`;
-        if (data.last_check_ms) info += `<span class="hb-label">Last check:</span> ${_timeAgo(data.last_check_ms)} — ${data.last_action || "?"}<br>`;
-        if (data.last_run_ms) info += `<span class="hb-label">Last run:</span> ${_timeAgo(data.last_run_ms)}<br>`;
+        if (data.last_check_ms) info += `<span class="hb-label">Last check:</span> ${timeAgo(data.last_check_ms)} — ${data.last_action || "?"}<br>`;
+        if (data.last_run_ms) info += `<span class="hb-label">Last run:</span> ${timeAgo(data.last_run_ms)}<br>`;
         if (data.last_error) info += `<span class="hb-label">Error:</span> ${escapeHtml(data.last_error)}<br>`;
         info += `<span class="hb-label">File:</span> ${data.heartbeat_file_exists ? `<a class="hb-file-link" href="#" onclick="openHeartbeatFile(event)">TASK.md</a>` : "missing"}`;
         info += `</div>`;
@@ -657,16 +632,8 @@ async function loadSession(sessionId) {
         if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
         console.debug("[SHIBA] loadSession:", sessionId, "messages:", data.messages?.length || 0);
 
-        setSessionLabel(data.nickname || sessionId);
-        state.profileId = data.profile_id || "default";
-        if (typeof window.syncProfileSelection === "function") {
-            await window.syncProfileSelection(state.profileId);
-            if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
-        }
+        _syncSessionUI(data, loadSeq, sessionId);
         if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
-        if (typeof updateModelSelectorDisplay === "function") {
-            updateModelSelectorDisplay(data.model || "");
-        }
 
         chatHistory.innerHTML = "";
         state.messageCount = 0;
@@ -678,185 +645,18 @@ async function loadSession(sessionId) {
         const messages = Array.isArray(data.messages) ? data.messages : [];
         if (messages.length > 0) {
             activateChat();
-
             try { refreshTokenBadge(); } catch (e) { /* ignore */ }
 
-            let turnSteps = [];
-            let turnId = 0;
-            let pgCount = 0;
+            const { parsedMessages, parsedGroups } = _parseSessionMessages(messages, loadSeq, sessionId);
+            if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
 
-            let lastUserContent = null;
             const fragment = document.createDocumentFragment();
-
-            for (const msg of messages) {
-                if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
-                if (!msg || !msg.role) continue;
-                if (msg.role === "user") {
-                    if (msg.metadata && msg.metadata.hidden) continue;
-                    if (!msg.content || msg.content === lastUserContent) continue;
-                    lastUserContent = msg.content;
-
-                    const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
-                    if (turnSteps.length > 0 && hasExeSteps) {
-                        renderProcessGroupFromHistory(turnId, turnSteps, fragment);
-                        pgCount++;
-                    }
-                    turnSteps = [];
-                    turnId++;
-                    const group = createMessageGroup("user", fragment);
-                    const bubble = document.createElement("div");
-                    bubble.className = "message-bubble";
-
-                    if (msg.content) {
-                        bubble.innerHTML = renderMarkdown(msg.content);
-                        try { bubble.setAttribute("data-raw-content", typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)); } catch (e) { }
-                        enhanceCodeBlocks(bubble);
-                    }
-
-                    const attachments = msg.metadata?.attachments || [];
-                    attachments.forEach(file => {
-                        _appendHistoryAttachment(bubble, file);
-                    });
-
-                    group.querySelector(".message-content").appendChild(bubble);
-                    if (msg.timestamp) addTimestamp(group, msg.timestamp);
-                    fragment.appendChild(group);
-
-                } else if (msg.role === "assistant") {
-                    const hasTc = msg.tool_calls && msg.tool_calls.length > 0;
-                    const hasContent = !!msg.content;
-                    const hasReasoning = !!msg.reasoning_content;
-
-                    if (hasReasoning) {
-                        const preview = (msg.reasoning_content?.slice?.(0, 120)) || "";
-                        turnSteps.push({ badge: "GEN", text: preview });
-                    }
-
-                    let msgToolCall = null;
-                    if (hasTc) {
-                        for (const tc of msg.tool_calls) {
-                            const fn = tc.function?.name || "tool";
-                            if (fn === "message") {
-                                msgToolCall = tc;
-                            } else {
-                                let args = "";
-                                try {
-                                    const raw = tc.function?.arguments;
-                                    if (raw) {
-                                        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-                                        const vals = Object.values(parsed);
-                                        if (vals.length > 0) {
-                                            const preview = String(vals[0]).replace(/\n/g, " ");
-                                            args = `("${truncate(preview, 60)}")`;
-                                        }
-                                    }
-                                } catch { }
-                                turnSteps.push({ badge: "EXE", text: fn + args });
-                            }
-                        }
-                    }
-
-                    if (hasContent) {
-                        const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
-                        if (turnSteps.length > 0 && hasExeSteps) {
-                            renderProcessGroupFromHistory(turnId, turnSteps, fragment);
-                            pgCount++;
-                            turnSteps = [];
-                        }
-                        const group = createMessageGroup("agent", fragment);
-                        const bubble = document.createElement("div");
-                        bubble.className = "message-bubble";
-                        bubble.innerHTML = renderMarkdown(msg.content);
-                        try { bubble.setAttribute("data-raw-content", typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)); } catch (e) { }
-                        enhanceCodeBlocks(bubble);
-
-                        let attachments = msg.metadata?.attachments ? [...msg.metadata.attachments] : [];
-                        if (msg.metadata?.media && Array.isArray(msg.metadata.media)) {
-                            msg.metadata.media.forEach(p => {
-                                const name = p.split(/[/\\]/).pop();
-                                let type = "application/octet-stream";
-                                if (name.match(/\.(png|jpe?g|gif|webp|svg)$/i)) type = "image/png";
-                                attachments.push({
-                                    name: name,
-                                    url: "/api/file-get?path=" + encodeURIComponent(p),
-                                    type: type
-                                });
-                            });
-                        }
-                        attachments.forEach(file => {
-                            _appendHistoryAttachment(bubble, file);
-                        });
-
-                        group.querySelector(".message-content").appendChild(bubble);
-                        if (msg.timestamp) addTimestamp(group, msg.timestamp);
-                        fragment.appendChild(group);
-                    }
-
-                    if (msgToolCall) {
-                        const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
-                        if (turnSteps.length > 0 && hasExeSteps) {
-                            renderProcessGroupFromHistory(turnId, turnSteps, fragment);
-                            pgCount++;
-                            turnSteps = [];
-                        }
-                        let toolContent = "";
-                        let toolMedia = [];
-                        try {
-                            const args = typeof msgToolCall.function.arguments === "string"
-                                ? JSON.parse(msgToolCall.function.arguments)
-                                : msgToolCall.function.arguments;
-                            toolContent = args.content || "";
-                            toolMedia = args.media || [];
-                        } catch (e) {
-                            console.error("Failed to parse message tool args:", e);
-                        }
-
-                        const group = createMessageGroup("agent", fragment);
-                        const bubble = document.createElement("div");
-                        bubble.className = "message-bubble";
-                        bubble.innerHTML = renderMarkdown(toolContent);
-                        try { bubble.setAttribute("data-raw-content", typeof toolContent === "string" ? toolContent : JSON.stringify(toolContent)); } catch (e) { }
-                        enhanceCodeBlocks(bubble);
-
-                        let attachments = [];
-                        toolMedia.forEach(p => {
-                            const name = p.split(/[/\\]/).pop();
-                            let type = "application/octet-stream";
-                            if (name.match(/\.(png|jpe?g|gif|webp|svg)$/i)) type = "image/png";
-                            attachments.push({
-                                name: name,
-                                url: "/api/file-get?path=" + encodeURIComponent(p),
-                                type: type
-                            });
-                        });
-                        attachments.forEach(file => {
-                            _appendHistoryAttachment(bubble, file);
-                        });
-
-                        group.querySelector(".message-content").appendChild(bubble);
-                        if (msg.timestamp) addTimestamp(group, msg.timestamp);
-                        fragment.appendChild(group);
-                    }
-
-                    if (!hasContent && !msgToolCall && turnSteps.length > 0) {
-                        renderProcessGroupFromHistory(turnId, turnSteps, fragment);
-                        pgCount++;
-                        turnSteps = [];
-                    }
-
-                } else if (msg.role === "tool") {
-                }
-            }
-            if (turnSteps.length > 0 && turnSteps.some(s => s.badge === "EXE")) {
-                renderProcessGroupFromHistory(turnId, turnSteps, fragment);
-                pgCount++;
-            }
-
+            _renderSessionHistory(parsedMessages, parsedGroups, fragment, loadSeq, sessionId);
+            
             if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
             chatHistory.appendChild(fragment);
 
-            console.debug("[SHIBA] loadSession rendered:", pgCount, "process groups,",
-                chatHistory.querySelectorAll(".process-group").length, "in DOM");
+            console.debug("[SHIBA] loadSession rendered:", parsedGroups.length, "process groups");
             scrollToBottom();
         } else {
             chatHistory.classList.remove("active");
@@ -873,6 +673,204 @@ async function loadSession(sessionId) {
     }
 }
 
+function _syncSessionUI(data, loadSeq, sessionId) {
+    setSessionLabel(data.nickname || sessionId);
+    state.profileId = data.profile_id || "default";
+    if (typeof window.syncProfileSelection === "function") {
+        window.syncProfileSelection(state.profileId);
+    }
+    if (typeof updateModelSelectorDisplay === "function") {
+        updateModelSelectorDisplay(data.model || "");
+    }
+}
+
+function _parseSessionMessages(messages, loadSeq, sessionId) {
+    let turnSteps = [];
+    let turnId = 0;
+    let lastUserContent = null;
+    const parsedMessages = [];
+    const parsedGroups = [];
+
+    for (const msg of messages) {
+        if (!_isCurrentSessionLoad(loadSeq, sessionId)) return { parsedMessages: [], parsedGroups: [] };
+        if (!msg || !msg.role) continue;
+        
+        if (msg.role === "user") {
+            if (msg.metadata && msg.metadata.hidden) continue;
+            if (!msg.content || msg.content === lastUserContent) continue;
+            lastUserContent = msg.content;
+
+            const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
+            if (turnSteps.length > 0 && hasExeSteps) {
+                parsedGroups.push({ turnId, steps: [...turnSteps] });
+            }
+            turnSteps = [];
+            turnId++;
+            
+            parsedMessages.push({ type: "user", data: msg, turnId });
+
+        } else if (msg.role === "assistant") {
+            const hasTc = msg.tool_calls && msg.tool_calls.length > 0;
+            const hasContent = !!msg.content;
+            const hasReasoning = !!msg.reasoning_content;
+
+            if (hasReasoning) {
+                const preview = (msg.reasoning_content?.slice?.(0, 120)) || "";
+                turnSteps.push({ badge: "GEN", text: preview });
+            }
+
+            let msgToolCall = null;
+            if (hasTc) {
+                for (const tc of msg.tool_calls) {
+                    const fn = tc.function?.name || "tool";
+                    if (fn === "message") {
+                        msgToolCall = tc;
+                    } else {
+                        let args = "";
+                        try {
+                            const raw = tc.function?.arguments;
+                            if (raw) {
+                                const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+                                const vals = Object.values(parsed);
+                                if (vals.length > 0) {
+                                    const preview = String(vals[0]).replace(/\n/g, " ");
+                                    args = `("${truncate(preview, 60)}")`;
+                                }
+                            }
+                        } catch { }
+                        turnSteps.push({ badge: "EXE", text: fn + args });
+                    }
+                }
+            }
+
+            if (hasContent) {
+                const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
+                if (turnSteps.length > 0 && hasExeSteps) {
+                    parsedGroups.push({ turnId, steps: [...turnSteps] });
+                    turnSteps = [];
+                }
+                parsedMessages.push({ type: "agent", data: msg, turnId });
+            }
+
+            if (msgToolCall) {
+                const hasExeSteps = turnSteps.some(s => s.badge === "EXE");
+                if (turnSteps.length > 0 && hasExeSteps) {
+                    parsedGroups.push({ turnId, steps: [...turnSteps] });
+                    turnSteps = [];
+                }
+                parsedMessages.push({ type: "tool_message", data: { msg, toolCall: msgToolCall }, turnId });
+            }
+
+            if (!hasContent && !msgToolCall && turnSteps.length > 0) {
+                parsedGroups.push({ turnId, steps: [...turnSteps] });
+                turnSteps = [];
+            }
+        }
+    }
+    if (turnSteps.length > 0 && turnSteps.some(s => s.badge === "EXE")) {
+        parsedGroups.push({ turnId, steps: [...turnSteps] });
+    }
+
+    return { parsedMessages, parsedGroups };
+}
+
+function _renderSessionHistory(parsedMessages, parsedGroups, fragment, loadSeq, sessionId) {
+    let currentGroupIdx = 0;
+
+    for (const item of parsedMessages) {
+        if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
+        
+        // Render any pending process groups for this turn
+        while (currentGroupIdx < parsedGroups.length && parsedGroups[currentGroupIdx].turnId <= item.turnId) {
+            const pg = parsedGroups[currentGroupIdx];
+            renderProcessGroupFromHistory(pg.turnId, pg.steps, fragment);
+            currentGroupIdx++;
+        }
+
+        if (item.type === "user") {
+            const group = createMessageGroup("user", fragment);
+            const bubble = document.createElement("div");
+            bubble.className = "message-bubble";
+
+            if (item.data.content) {
+                bubble.innerHTML = renderMarkdown(item.data.content);
+                try { bubble.setAttribute("data-raw-content", typeof item.data.content === "string" ? item.data.content : JSON.stringify(item.data.content)); } catch (e) { }
+                enhanceCodeBlocks(bubble);
+            }
+
+            const attachments = item.data.metadata?.attachments || [];
+            attachments.forEach(file => _appendHistoryAttachment(bubble, file));
+
+            group.querySelector(".message-content").appendChild(bubble);
+            if (item.data.timestamp) addTimestamp(group, item.data.timestamp);
+            fragment.appendChild(group);
+
+        } else if (item.type === "agent") {
+            const group = createMessageGroup("agent", fragment);
+            const bubble = document.createElement("div");
+            bubble.className = "message-bubble";
+            bubble.innerHTML = renderMarkdown(item.data.content);
+            try { bubble.setAttribute("data-raw-content", typeof item.data.content === "string" ? item.data.content : JSON.stringify(item.data.content)); } catch (e) { }
+            enhanceCodeBlocks(bubble);
+
+            let attachments = item.data.metadata?.attachments ? [...item.data.metadata.attachments] : [];
+            if (item.data.metadata?.media && Array.isArray(item.data.metadata.media)) {
+                item.data.metadata.media.forEach(p => {
+                    const name = p.split(/[/\\]/).pop();
+                    let type = "application/octet-stream";
+                    if (name.match(/\.(png|jpe?g|gif|webp|svg)$/i)) type = "image/png";
+                    attachments.push({ name: name, url: "/api/file-get?path=" + encodeURIComponent(p), type: type });
+                });
+            }
+            attachments.forEach(file => _appendHistoryAttachment(bubble, file));
+
+            group.querySelector(".message-content").appendChild(bubble);
+            if (item.data.timestamp) addTimestamp(group, item.data.timestamp);
+            fragment.appendChild(group);
+
+        } else if (item.type === "tool_message") {
+            let toolContent = "";
+            let toolMedia = [];
+            try {
+                const args = typeof item.data.toolCall.function.arguments === "string"
+                    ? JSON.parse(item.data.toolCall.function.arguments)
+                    : item.data.toolCall.function.arguments;
+                toolContent = args.content || "";
+                toolMedia = args.media || [];
+            } catch (e) {
+                console.error("Failed to parse message tool args:", e);
+            }
+
+            const group = createMessageGroup("agent", fragment);
+            const bubble = document.createElement("div");
+            bubble.className = "message-bubble";
+            bubble.innerHTML = renderMarkdown(toolContent);
+            try { bubble.setAttribute("data-raw-content", typeof toolContent === "string" ? toolContent : JSON.stringify(toolContent)); } catch (e) { }
+            enhanceCodeBlocks(bubble);
+
+            let attachments = [];
+            toolMedia.forEach(p => {
+                const name = p.split(/[/\\]/).pop();
+                let type = "application/octet-stream";
+                if (name.match(/\.(png|jpe?g|gif|webp|svg)$/i)) type = "image/png";
+                attachments.push({ name: name, url: "/api/file-get?path=" + encodeURIComponent(p), type: type });
+            });
+            attachments.forEach(file => _appendHistoryAttachment(bubble, file));
+
+            group.querySelector(".message-content").appendChild(bubble);
+            if (item.data.msg.timestamp) addTimestamp(group, item.data.msg.timestamp);
+            fragment.appendChild(group);
+        }
+    }
+
+    // Render any remaining process groups
+    while (currentGroupIdx < parsedGroups.length) {
+        const pg = parsedGroups[currentGroupIdx];
+        renderProcessGroupFromHistory(pg.turnId, pg.steps, fragment);
+        currentGroupIdx++;
+    }
+}
+
 window.openModal = async function (id) {
     if (id === "settings-modal") {
         window.openSettingsView();
@@ -885,6 +883,9 @@ window.openModal = async function (id) {
     if (typeof window.closeSidebarOnMobile === "function") {
         window.closeSidebarOnMobile();
     }
+
+    // Dispatch event so decoupled modules (e.g. connected_apps) can hook into modal opening
+    document.dispatchEvent(new CustomEvent('shiba-modal-opened', { detail: { id } }));
 
     if (id === "context-modal") {
         state.contextModalOpen = true;
@@ -968,1192 +969,6 @@ window.closeModal = function (id) {
     modal.classList.remove("active");
 };
 
-window.openSettingsView = async function () {
-    const chatArea = document.getElementById("chat-area");
-    const settingsView = document.getElementById("settings-view");
-    if (chatArea) chatArea.style.display = "none";
-    if (settingsView) settingsView.style.display = "flex";
-
-    if (typeof window.closeSidebarOnMobile === "function") {
-        window.closeSidebarOnMobile();
-    }
-
-    const loader = document.getElementById("settings-loading");
-    if (loader) loader.style.display = "flex";
-    document.querySelectorAll(".settings-panel").forEach(p => p.style.display = "none");
-    try {
-        const res = await authFetch("/api/settings");
-        const cfg = await res.json();
-        if (cfg.error) throw cfg.error;
-        window._shibaConfig = cfg;
-        populateSettings(cfg);
-        if (loader) loader.style.display = "none";
-        
-        let startTab = "agent";
-        try { startTab = localStorage.getItem("shibaclaw_settings_tab") || "agent"; } catch (e) { }
-        
-        const isMobile = window.matchMedia("(max-width: 768px)").matches;
-        if (isMobile) {
-            document.getElementById("settings-mobile-dashboard").style.display = "block";
-            document.getElementById("settings-body").style.display = "none";
-            document.getElementById("settings-sidebar").style.display = "none";
-            switchSettingsTab(startTab, { skipMobileDetailShow: true });
-        } else {
-            document.getElementById("settings-mobile-dashboard").style.display = "none";
-            document.getElementById("settings-body").style.display = "block";
-            document.getElementById("settings-sidebar").style.display = "flex";
-            switchSettingsTab(startTab);
-        }
-    } catch (e) {
-        if (loader) {
-            loader.innerHTML = `<span class="material-icons-round" style="color:var(--accent-red)">error</span> Failed to load settings`;
-        }
-    }
-};
-
-window.closeSettingsView = function () {
-    _clearOAuthPollsByPrefix("settings:");
-    const settingsView = document.getElementById("settings-view");
-    const chatArea = document.getElementById("chat-area");
-    if (settingsView) settingsView.style.display = "none";
-    if (chatArea) chatArea.style.display = "flex";
-};
-
-window.backToSettingsDashboard = function () {
-    document.getElementById("settings-mobile-dashboard").style.display = "block";
-    document.getElementById("settings-body").style.display = "none";
-    const subtitleEl = document.getElementById("settings-current-tab-title");
-    if (subtitleEl) subtitleEl.textContent = "Settings Dashboard";
-};
-
-window.openOnboardFromSettings = function () {
-    window.closeSettingsView();
-    openOnboardWizard();
-};
-
-window.switchSettingsTab = function (tab, options = {}) {
-    document.querySelectorAll(".settings-sidebar-item").forEach(t => t.classList.remove("active"));
-    const sidebarEl = document.querySelector(`.settings-sidebar-item[data-tab="${tab}"]`);
-    if (sidebarEl) sidebarEl.classList.add("active");
-    document.querySelectorAll(".settings-tab").forEach(t => t.classList.remove("active"));
-    const tabEl = document.querySelector(`.settings-tab[data-tab="${tab}"]`);
-    if (tabEl) tabEl.classList.add("active");
-    document.querySelectorAll(".settings-panel").forEach(p => p.style.display = "none");
-    const panel = $("panel-" + tab);
-    if (panel) panel.style.display = "block";
-    if (tab === "oauth") loadOAuthPanel();
-    if (tab === "update") loadUpdatePanel();
-    if (tab === "skills") loadSkillsPanel();
-    if (tab === "plugins") loadPluginsPanel();
-    if (tab === "heartbeat") loadHeartbeatSettingsPanel();
-    if (tab === "mcp") { if (typeof loadMcpManagerPanel === "function") loadMcpManagerPanel(); }
-    try { localStorage.setItem("shibaclaw_settings_tab", tab); } catch (e) { }
-
-    const isMobile = window.matchMedia("(max-width: 768px)").matches;
-    const subtitleEl = document.getElementById("settings-current-tab-title");
-    if (subtitleEl) {
-        const label = sidebarEl ? sidebarEl.querySelector("span:last-child")?.textContent || tab : tab;
-        subtitleEl.textContent = label;
-    }
-
-    if (isMobile) {
-        if (options.skipMobileDetailShow) {
-            document.getElementById("settings-mobile-dashboard").style.display = "block";
-            document.getElementById("settings-body").style.display = "none";
-        } else {
-            document.getElementById("settings-mobile-dashboard").style.display = "none";
-            document.getElementById("settings-body").style.display = "block";
-            document.getElementById("settings-body").scrollTop = 0;
-        }
-    } else {
-        document.getElementById("settings-mobile-dashboard").style.display = "none";
-        document.getElementById("settings-body").style.display = "block";
-    }
-};
-
-/* ── Skills panel ── */
-window._skillsData = [];
-window._skillsPinnedList = [];
-window._skillsMaxPinned = 5;
-
-async function loadSkillsPanel() {
-    const listEl = document.getElementById("skills-list");
-    const selectEl = document.getElementById("skills-profile-select");
-    
-    // Ensure dropdown is populated
-    if (selectEl && selectEl.options.length <= 1) {
-        if (typeof fetchProfiles === "function") {
-            try {
-                const profiles = await fetchProfiles();
-                let html = "";
-                for (const p of profiles) {
-                    html += '<option value="' + p.id + '">' + escHtml(p.label) + '</option>';
-                }
-                selectEl.innerHTML = html;
-            } catch (e) {}
-        }
-    }
-    
-    // Sync the dropdown to the active profile if it's the first time opening
-    if (selectEl && !selectEl.dataset.initialized) {
-        const defaultPid = (typeof state !== 'undefined' && state.profileId) ? state.profileId : 'default';
-        selectEl.value = defaultPid;
-        selectEl.dataset.initialized = "true";
-    }
-
-    try {
-        const pid = selectEl ? selectEl.value : ((typeof state !== 'undefined' && state.profileId) ? state.profileId : 'default');
-        const res = await authFetch("/api/skills?profile_id=" + encodeURIComponent(pid));
-        if (!res.ok) {
-            if (listEl) listEl.innerHTML = '<div style="color:#e57373;font-size:13px;padding:12px">Failed to load skills (HTTP ' + res.status + ')</div>';
-            return;
-        }
-        const data = await res.json();
-        window._skillsData = data.skills || [];
-        window._skillsPinnedList = data.pinned_skills || [];
-        window._skillsMaxPinned = data.max_pinned_skills || 5;
-        renderSkillsPanel();
-    } catch (e) {
-        console.error("loadSkillsPanel", e);
-        if (listEl) listEl.innerHTML = '<div style="color:#e57373;font-size:13px;padding:12px">Error loading skills</div>';
-    }
-}
-
-function renderSkillsPanel() {
-    const skills = window._skillsData;
-    const pinned = window._skillsPinnedList;
-    var alwaysActive = skills.filter(function (s) { return s.always || pinned.includes(s.name); });
-    var alwaysNames = alwaysActive.map(function (s) { return s.name; });
-
-    var counter = document.getElementById("skills-pin-counter");
-    if (counter) counter.textContent = alwaysActive.length + " / " + window._skillsMaxPinned;
-
-    var pinnedList = document.getElementById("skills-pinned-list");
-    if (pinnedList) {
-        if (alwaysActive.length === 0) {
-            pinnedList.innerHTML = '<span style="color:var(--text-secondary);font-size:12px">No always-active skills</span>';
-        } else {
-            pinnedList.innerHTML = alwaysActive.map(function (s) {
-                var canUnpin = !s.always;
-                var closeBtn = canUnpin
-                    ? ' <span class="material-icons-round" style="font-size:14px;cursor:pointer;vertical-align:middle" onclick="toggleSkillPin(\'' + escHtml(s.name) + '\', false)">close</span>'
-                    : ' <span class="material-icons-round" style="font-size:14px;vertical-align:middle;opacity:0.4" title="Set in SKILL.md">lock</span>';
-                return '<span class="skills-pinned-chip">' + escHtml(s.name) + closeBtn + '</span>';
-            }).join("");
-        }
-    }
-
-    var listEl = document.getElementById("skills-list");
-    if (!listEl) return;
-    var q = ((document.getElementById("skills-search") || {}).value || "").toLowerCase();
-    var filtered = q ? skills.filter(function (s) { return s.name.toLowerCase().includes(q) || (s.description || "").toLowerCase().includes(q); }) : skills;
-    if (filtered.length === 0) {
-        listEl.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;padding:12px">No skills found.</div>';
-        return;
-    }
-    listEl.innerHTML = filtered.map(function (s) { return renderSkillCard(s, alwaysNames); }).join("");
-}
-
-function escHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-
-function renderSkillCard(skill, activeNames) {
-    var isActive = activeNames.includes(skill.name);
-    var isYamlAlways = skill.always;
-    var badgeClass = skill.source === "builtin" ? "builtin" : "workspace";
-    var availClass = skill.available ? "" : " unavailable";
-    var pinBtn = isYamlAlways
-        ? '<span class="material-icons-round" style="font-size:16px;color:var(--shiba-gold);opacity:0.6" title="Always active (SKILL.md)">lock</span>'
-        : '<span class="material-icons-round" style="font-size:16px;cursor:pointer;color:' + (isActive ? 'var(--shiba-gold)' : 'var(--text-secondary)') + '" title="' + (isActive ? 'Unpin' : 'Pin as always active') + '" onclick="toggleSkillPin(\'' + escHtml(skill.name) + '\', ' + !isActive + ')">' + (isActive ? 'push_pin' : 'add_circle_outline') + '</span>';
-    var deleteBtn = skill.source === "workspace"
-        ? '<span class="material-icons-round" style="font-size:16px;cursor:pointer;color:var(--text-secondary)" title="Delete" onclick="deleteSkill(\'' + escHtml(skill.name) + '\')">delete</span>'
-        : '';
-    return '<div class="skill-card' + availClass + '">' +
-        '<div class="skill-card-body">' +
-        '<div class="skill-card-name">' + escHtml(skill.name) + ' <span class="skill-badge ' + badgeClass + '">' + escHtml(skill.source) + '</span></div>' +
-        '<div class="skill-card-desc">' + escHtml(skill.description || 'No description') + '</div>' +
-        (skill.missing_requirements ? '<div style="font-size:11px;color:#e57373;margin-top:2px">Missing: ' + escHtml(skill.missing_requirements) + '</div>' : '') +
-        '</div>' +
-        '<div class="skill-card-actions">' + pinBtn + deleteBtn + '</div>' +
-        '</div>';
-}
-
-window.toggleSkillPin = async function (name, pin) {
-    let list = [...window._skillsPinnedList];
-    if (pin) {
-        if (list.length >= window._skillsMaxPinned) { alert("Max pinned skills reached (" + window._skillsMaxPinned + ")"); return; }
-        if (!list.includes(name)) list.push(name);
-    } else {
-        list = list.filter(n => n !== name);
-    }
-    try {
-        const selectEl = document.getElementById("skills-profile-select");
-        const pid = selectEl ? selectEl.value : ((typeof state !== 'undefined' && state.profileId) ? state.profileId : 'default');
-        const res = await authFetch("/api/skills/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pinned_skills: list, profile_id: pid }) });
-        if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Pin failed"); return; }
-        window._skillsPinnedList = list;
-        renderSkillsPanel();
-    } catch (e) { console.error("toggleSkillPin", e); }
-};
-
-window.deleteSkill = async function (name) {
-    if (!confirm("Delete skill '" + name + "'? This cannot be undone.")) return;
-    try {
-        const res = await authFetch("/api/skills/" + encodeURIComponent(name), { method: "DELETE" });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) { alert(d.error || "Delete failed"); return; }
-        loadSkillsPanel();
-    } catch (e) { console.error("deleteSkill", e); }
-};
-
-window.handleSkillsFileSelect = function (event) {
-    const fileInput = event.target;
-    const nameEl = document.getElementById("skills-import-filename");
-    const importBtn = document.getElementById("skills-import-btn");
-    if (fileInput.files.length) {
-        if (nameEl) nameEl.textContent = fileInput.files[0].name;
-        if (importBtn) importBtn.disabled = false;
-    } else {
-        if (nameEl) nameEl.textContent = "No file selected";
-        if (importBtn) importBtn.disabled = true;
-    }
-};
-
-window.importSkills = async function () {
-    const fileInput = document.getElementById("skills-import-file");
-    if (!fileInput || !fileInput.files.length) return;
-    const el = document.getElementById("skills-import-result");
-    const form = new FormData();
-    form.append("file", fileInput.files[0]);
-    form.append("conflict", "overwrite");
-    if (el) { el.style.display = "block"; el.innerHTML = '<span style="color:var(--text-secondary)">Importing...</span>'; }
-    try {
-        const res = await authFetch("/api/skills/import", { method: "POST", body: form });
-        const d = await res.json();
-        if (!res.ok) { if (el) el.innerHTML = '<span style="color:#e57373">' + escHtml(d.error || "Error") + '</span>'; return; }
-        if (el) el.innerHTML = '<span style="color:#4ade80">Imported ' + (d.imported_count || 0) + ' skill(s)</span>';
-        fileInput.value = "";
-        var nameEl = document.getElementById("skills-import-filename");
-        if (nameEl) nameEl.textContent = "No file selected";
-        document.getElementById("skills-import-btn").disabled = true;
-        loadSkillsPanel();
-    } catch (e) {
-        console.error("importSkills", e);
-        if (el) { el.style.display = "block"; el.innerHTML = '<span style="color:#e57373">Network error</span>'; }
-    }
-};
-
-document.addEventListener("DOMContentLoaded", function () {
-    document.addEventListener("input", function (e) {
-        if (e.target && e.target.id === "skills-search") renderSkillsPanel();
-    });
-
-    // Set up listener for memory compaction events
-    if (typeof realtime !== 'undefined' && realtime) {
-        realtime.on("memory_compacted", () => {
-            if (state.contextModalOpen && state.sessionId) {
-                _loadContextModalContent();
-            }
-        });
-    }
-});
-
-/* ── end Skills panel ── */
-
-async function loadOAuthPanel() {
-    const list = document.getElementById("oauth-list");
-    if (!list) return;
-    _clearOAuthPollsByPrefix("settings:");
-    const providers = [
-        { name: "openrouter", label: "OpenRouter", icon: "route", desc: "Authenticate in the browser and store the returned OpenRouter API key directly in provider settings.", mode: "browser_redirect", cta: "Open OpenRouter" },
-        { name: "github_copilot", label: "GitHub Copilot", icon: "code", desc: "Authenticate via GitHub device flow. Uses native OAuth orchestration." },
-        { name: "openai_codex", label: "OpenAI Codex", icon: "psychology", desc: "Authenticate via OAuth CLI kit. Requires oauth-cli-kit package." },
-    ];
-    list.innerHTML = "";
-    for (const p of providers) {
-        const card = document.createElement("div");
-        card.className = "accordion";
-        card.innerHTML = `
-            <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
-                <div class="accordion-title">
-                    <span class="material-icons-round" style="font-size:18px">${p.icon}</span>
-                    ${p.label}
-                </div>
-                <div class="accordion-right">
-                    <span class="acc-badge off" id="oauth-badge-${p.name}">Checking...</span>
-                    <span class="material-icons-round accordion-arrow">expand_more</span>
-                </div>
-            </div>
-            <div class="accordion-body">
-                <div class="field-row" style="grid-template-columns:1fr">
-                    <span style="font-size:12px;color:var(--text-secondary)">${p.desc}</span>
-                </div>
-                <div style="display:flex;gap:8px;padding:0.5rem 0">
-                    <button class="btn-primary btn-sm" id="btn-oauth-login-${p.name}">
-                        <span class="material-icons-round" style="font-size:14px;vertical-align:middle">login</span> Login
-                    </button>
-                </div>
-                <div class="oauth-logs" id="oauth-logs-${p.name}" style="display:none;height:260px;overflow-y:scroll;overflow-x:hidden;background:var(--bg-primary);border-radius:6px;padding:12px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text-secondary);margin-top:4px;border:1px solid var(--border-color);white-space:pre-wrap;line-height:1.6"></div>
-            </div>`;
-        list.appendChild(card);
-
-        document.getElementById("btn-oauth-login-" + p.name).addEventListener("click", async () => {
-            const btn = document.getElementById("btn-oauth-login-" + p.name);
-            const badge = document.getElementById("oauth-badge-" + p.name);
-            const logsEl = document.getElementById("oauth-logs-" + p.name);
-            btn.disabled = true; btn.innerHTML = '<span class="material-icons-round spin" style="font-size:14px;vertical-align:middle">progress_activity</span> Contacting...';
-            logsEl.style.display = "block"; logsEl.innerHTML = p.name === "openrouter" ? "Preparing OpenRouter login...\n" : "Requesting device code...\n";
-            const loginBtnHtml = '<span class="material-icons-round" style="font-size:14px;vertical-align:middle">login</span> Login';
-            try {
-                const resp = await authFetch("/api/oauth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: p.name }) });
-                const jd = await resp.json();
-                if (jd.error) {
-                    logsEl.textContent = "Error: " + jd.error;
-                    btn.disabled = false; btn.innerHTML = loginBtnHtml;
-                    return;
-                }
-
-                if (jd.user_code && jd.verification_uri) {
-                    badge.textContent = "Awaiting auth..."; badge.className = "acc-badge off";
-                    btn.innerHTML = '<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...';
-                    const codeId = "oauth-code-" + Date.now();
-                    logsEl.innerHTML =
-                        `<div style="text-align:center;padding:12px 0">` +
-                        `<div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap">` +
-                        `<a href="${jd.verification_uri}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:var(--bg-primary);background:var(--shiba-gold);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">` +
-                        `<span class="material-icons-round" style="font-size:16px">open_in_new</span> Open GitHub` +
-                        `</a>` +
-                        `<div style="position:relative;display:inline-flex;align-items:center;background:var(--bg-secondary);border:2px solid var(--shiba-gold);border-radius:10px;padding:6px 12px 6px 16px;gap:10px;cursor:pointer" onclick="navigator.clipboard.writeText('${jd.user_code}');const t=document.getElementById('${codeId}-tip');t.textContent='Copied!';setTimeout(()=>t.textContent='Click to copy',1500)" title="Click to copy code">` +
-                        `<span style="font-size:26px;font-weight:700;letter-spacing:5px;color:var(--shiba-gold);font-family:'JetBrains Mono',monospace">${jd.user_code}</span>` +
-                        `<span class="material-icons-round" style="font-size:18px;color:var(--text-muted)">content_copy</span>` +
-                        `</div>` +
-                        `</div>` +
-                        `<div id="${codeId}-tip" style="margin-top:6px;font-size:11px;color:var(--text-muted)">Click to copy</div>` +
-                        `<div style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--text-muted)">` +
-                        `<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px">progress_activity</span> Waiting for authorization...` +
-                        `</div>` +
-                        `</div>`;
-                }
-
-                if (jd.auth_url && p.mode === "browser_redirect") {
-                    badge.textContent = "Awaiting auth..."; badge.className = "acc-badge off";
-                    btn.innerHTML = '<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...';
-                    logsEl.innerHTML =
-                        `<div class="oauth-browser-auth-ui" style="text-align:center;padding:12px 0">` +
-                        `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">OpenRouter will return here automatically when the authorization is complete.</div>` +
-                        `<a href="${jd.auth_url}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:6px;color:var(--bg-primary);background:var(--shiba-gold);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">` +
-                        `<span class="material-icons-round" style="font-size:16px">open_in_new</span> ${p.cta || 'Open login'}` +
-                        `</a>` +
-                        `<div style="margin-top:12px;font-size:11px;color:var(--text-muted)">If no tab opened automatically, use the button above.</div>` +
-                        `<div style="margin-top:12px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--text-muted)">` +
-                        `<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px">progress_activity</span> Waiting for browser callback...` +
-                        `</div>` +
-                        `</div>`;
-                    try {
-                        window.open(jd.auth_url, "_blank", "noopener,noreferrer");
-                    } catch { /* ignore popup blockers */ }
-                }
-
-                if (jd.job_id) {
-                    const pollScope = "settings:" + p.name;
-                    _startOAuthJobPoll(pollScope, jd.job_id, async (job) => {
-                        if (job.status === "done") {
-                            badge.textContent = "Configured"; badge.className = "acc-badge on";
-                            btn.disabled = false; btn.innerHTML = loginBtnHtml;
-                            logsEl.innerHTML = `<div style="color:#4ade80;font-weight:600;text-align:center;padding:12px">✅ Authentication successful!</div>`;
-                            try {
-                                const settingsView = document.getElementById("settings-view");
-                                if (settingsView && settingsView.style.display !== "none") {
-                                    const settingsRes = await authFetch("/api/settings");
-                                    const settingsCfg = await settingsRes.json();
-                                    if (!settingsCfg.error) {
-                                        window._shibaConfig = settingsCfg;
-                                        populateSettings(settingsCfg);
-                                        _availableModels = []; // Clear model cache
-                                        _hasFetchedModels = false;
-                                        switchSettingsTab("oauth");
-                                    }
-                                }
-                                switchSettingsTab("oauth");
-                            } catch { /* silent */ }
-                            return true;
-                        }
-                        if (job.status === "error") {
-                            badge.textContent = "Error"; badge.className = "acc-badge off";
-                            btn.disabled = false; btn.innerHTML = loginBtnHtml;
-                            const logs = (job.logs || []).join("\n");
-                            logsEl.innerHTML = `<div style="color:#f87171;padding:8px;white-space:pre-wrap">${logs}</div>`;
-                            return true;
-                        }
-                        if (job.status === "awaiting_redirect" && job.auth_url && p.mode === "browser_redirect" && !logsEl.querySelector('.oauth-browser-auth-ui')) {
-                            badge.textContent = "Awaiting auth..."; badge.className = "acc-badge off";
-                            btn.innerHTML = '<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...';
-                            logsEl.innerHTML =
-                                `<div class="oauth-browser-auth-ui" style="text-align:center;padding:12px 0">` +
-                                `<a href="${job.auth_url}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:6px;color:var(--bg-primary);background:var(--shiba-gold);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">` +
-                                `<span class="material-icons-round" style="font-size:16px">open_in_new</span> ${p.cta || 'Open login'}` +
-                                `</a>` +
-                                `<div style="margin-top:12px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--text-muted)">` +
-                                `<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px">progress_activity</span> Waiting for browser callback...` +
-                                `</div>` +
-                                `</div>`;
-                        } else if (job.status === "awaiting_code" && job.auth_url && !logsEl.querySelector('.codex-auth-ui')) {
-                            badge.textContent = "Awaiting auth..."; badge.className = "acc-badge off";
-                            btn.innerHTML = '<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px;vertical-align:middle">progress_activity</span> Waiting...';
-                            const inputId = "codex-input-" + jd.job_id;
-                            const submitId = "codex-submit-" + jd.job_id;
-                            logsEl.innerHTML =
-                                `<div class="codex-auth-ui" style="text-align:center;padding:12px 0">` +
-                                `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Click the button below to sign in with OpenAI:</div>` +
-                                `<a href="${job.auth_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:var(--bg-primary);background:var(--shiba-gold);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">` +
-                                `<span class="material-icons-round" style="font-size:16px">open_in_new</span> Open OpenAI Login` +
-                                `</a>` +
-                                `<div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:var(--bg-tertiary);text-align:left;font-size:12px;line-height:1.6;color:var(--text-secondary)">` +
-                                `<strong style="color:var(--shiba-gold)">📋 After login</strong>, your browser will redirect to a URL like:<br>` +
-                                `<code style="font-size:11px;color:var(--text-primary);background:var(--bg-secondary);padding:2px 6px;border-radius:4px;word-break:break-all">http://localhost:1455/auth/callback?code=<span style="color:var(--shiba-gold);font-weight:700">AUTH_CODE_HERE</span>&amp;state=...</code><br>` +
-                                `Paste the <strong>entire URL</strong> in the field below — the code will be extracted automatically.` +
-                                `</div>` +
-                                `<div style="margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:center">` +
-                                `<input id="${inputId}" type="text" class="form-input" placeholder="Paste the full callback URL here..." style="flex:1;max-width:400px;font-size:12px;font-family:'JetBrains Mono',monospace">` +
-                                `<button id="${submitId}" class="btn-primary btn-sm" style="white-space:nowrap">` +
-                                `<span class="material-icons-round" style="font-size:14px;vertical-align:middle">send</span> Submit` +
-                                `</button>` +
-                                `</div>` +
-                                `<div style="margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--text-muted)">` +
-                                `<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px">progress_activity</span> Waiting for authorization...` +
-                                `</div>` +
-                                `</div>`;
-                            setTimeout(() => {
-                                const submitBtn = document.getElementById(submitId);
-                                const inputEl = document.getElementById(inputId);
-                                if (submitBtn && inputEl) {
-                                    const doSubmit = async () => {
-                                        const code = inputEl.value.trim();
-                                        if (!code) return;
-                                        submitBtn.disabled = true; submitBtn.textContent = "Sending...";
-                                        try {
-                                            await authFetch("/api/oauth/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: jd.job_id, code }) });
-                                            inputEl.value = ""; inputEl.placeholder = "Code submitted, waiting...";
-                                        } catch { submitBtn.disabled = false; submitBtn.textContent = "Submit"; }
-                                    };
-                                    submitBtn.addEventListener("click", doSubmit);
-                                    inputEl.addEventListener("keydown", e => { if (e.key === "Enter") doSubmit(); });
-                                }
-                            }, 50);
-                        }
-                        return false;
-                    });
-                } else if (!jd.user_code) {
-                    logsEl.textContent = jd.error || "Unknown response";
-                    btn.disabled = false; btn.innerHTML = loginBtnHtml;
-                }
-            } catch (e) {
-                logsEl.textContent = "Error: " + e;
-                btn.disabled = false; btn.innerHTML = loginBtnHtml;
-            }
-        });
-    }
-
-    _refreshOAuthStatus();
-}
-
-async function _refreshOAuthStatus() {
-    try {
-        const r = await authFetch("/api/oauth/providers");
-        const data = await r.json();
-        for (const p of (data.providers || [])) {
-            const badge = document.getElementById("oauth-badge-" + p.name);
-            if (!badge) continue;
-            const ok = p.status === "configured";
-            badge.textContent = ok ? "Configured" : (p.status === "missing_dependency" ? "Missing dep" : "Not configured");
-            badge.className = "acc-badge " + (ok ? "on" : "off");
-        }
-    } catch { /* silent */ }
-}
-
-function _addProviderOption(sel, value, label) {
-    if (sel.querySelector(`option[value="${value}"]`)) return;
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = label || value.charAt(0).toUpperCase() + value.slice(1);
-    sel.appendChild(opt);
-}
-
-async function _populateOAuthProviders(sel, current) {
-    try {
-        const r = await authFetch("/api/oauth/providers");
-        const data = await r.json();
-        for (const p of (data.providers || [])) {
-            if (p.status === "configured") _addProviderOption(sel, p.name, p.label);
-        }
-        if (current) sel.value = current;
-    } catch { /* silent */ }
-}
-
-function providerKeyPlaceholder(name) {
-    const placeholders = {
-        anthropic: "sk-ant-...",
-        nvidia: "nvapi-...",
-        deepseek: "sk-...",
-        gemini: "AIza...",
-        groq: "gsk_...",
-        openai: "sk-...",
-        openrouter: "sk-or-...",
-    };
-    return placeholders[name] || "Enter API key";
-}
-
-function populateSettings(cfg) {
-    lastSettingsConfig = JSON.parse(JSON.stringify(cfg));
-    const d = cfg.agents?.defaults || {};
-    $("s-agent-model").value = d.model || "";
-    $("s-agent-consolidationModel").value = d.consolidationModel || "";
-    setupSettingsModelPickers();
-    void refreshSettingsModelPickers();
-    $("s-agent-temp").value = d.temperature ?? 0.1;
-    $("s-agent-maxTokens").value = d.maxTokens ?? 8192;
-    $("s-agent-ctxTokens").value = d.contextWindowTokens ?? 65536;
-    $("s-agent-maxIter").value = d.maxToolIterations ?? 40;
-    $("s-agent-toolTimeout").value = d.toolTimeout ?? 660;
-    $("s-agent-loopWallTimeout").value = d.loopWallTimeout ?? 600;
-    $("s-agent-subagentTimeout").value = d.subagentTimeout ?? 600;
-    $("s-agent-workspace").value = d.workspace || "~/.shibaclaw/workspace";
-    $("s-agent-reasoning").value = d.reasoningEffort || "";
-
-    // Audio settings
-    const au = cfg.audio || {};
-    $("s-audio-providerUrl").value = au.providerUrl || "";
-    $("s-audio-apiKey").value = au.apiKey || "";
-    $("s-audio-model").value = au.model || "";
-
-    const providerSelect = document.getElementById("s-audio-ttsProvider");
-    const voiceSelect = document.getElementById("s-audio-ttsVoice");
-    const langSelect = document.getElementById("s-audio-ttsLang");
-    const speedInput = document.getElementById("s-audio-ttsSpeed");
-    if (providerSelect) providerSelect.value = au.ttsProvider || "browser";
-    if (voiceSelect) voiceSelect.value = au.ttsVoice || "F1";
-    if (langSelect) langSelect.value = au.ttsLang || "en";
-    if (speedInput) speedInput.value = au.ttsSpeed ?? 1.0;
-
-    const ttsFromConfig = au.ttsEnabled !== undefined ? au.ttsEnabled : (localStorage.getItem("shibaclaw_tts_enabled") === "true");
-    const toggleEl = $("tts-toggle");
-    toggleEl.checked = ttsFromConfig;
-    if (window.speechTTS) window.speechTTS.enabled = ttsFromConfig;
-
-    toggleEl.onchange = (e) => {
-        if (window.speechTTS) window.speechTTS.enabled = e.target.checked;
-        localStorage.setItem("shibaclaw_tts_enabled", e.target.checked);
-        if (!e.target.checked && window.speechTTS) window.speechTTS.stop();
-        updateTtsSettingsVisibility();
-    };
-    if (providerSelect) providerSelect.onchange = updateTtsSettingsVisibility;
-    setTimeout(() => { if (typeof updateTtsSettingsVisibility === "function") updateTtsSettingsVisibility(); }, 50);
-
-    // UI toggles for thought blocks (per-user local overrides)
-    try {
-        const hide = localStorage.getItem("shibaclaw_hide_thoughts");
-        if (hide !== null && document.getElementById("s-ui-hide-thoughts")) {
-            document.getElementById("s-ui-hide-thoughts").checked = (hide === "true");
-        } else if (document.getElementById("s-ui-hide-thoughts")) {
-            document.getElementById("s-ui-hide-thoughts").checked = !!(cfg.ui && cfg.ui.hide_thoughts);
-        }
-    } catch (e) { }
-    try {
-        const coll = localStorage.getItem("shibaclaw_collapse_thoughts");
-        if (coll !== null && document.getElementById("s-ui-collapse-thoughts")) {
-            document.getElementById("s-ui-collapse-thoughts").checked = (coll === "true");
-        } else if (document.getElementById("s-ui-collapse-thoughts")) {
-            document.getElementById("s-ui-collapse-thoughts").checked = !!(cfg.ui && cfg.ui.collapse_thoughts);
-        }
-    } catch (e) { }
-
-    // Mobile Enter behavior (per-user local override)
-    try {
-        const mobileEnter = localStorage.getItem("shibaclaw_mobile_enter_newline");
-        if (mobileEnter !== null && document.getElementById("s-ui-mobile-enter-newline")) {
-            document.getElementById("s-ui-mobile-enter-newline").checked = (mobileEnter === "true");
-        } else if (document.getElementById("s-ui-mobile-enter-newline")) {
-            document.getElementById("s-ui-mobile-enter-newline").checked = !!(cfg.ui && cfg.ui.mobile_enter_newline);
-        }
-    } catch (e) { }
-
-    const prov = cfg.providers || {};
-    const list = $("providers-list");
-    list.innerHTML = "";
-
-    const PROV_ICONS = {
-        custom: "tune", azureOpenai: "cloud", anthropic: "psychology", openai: "auto_awesome",
-        openrouter: "route", nvidia: "developer_board", deepseek: "explore", groq: "speed", zhipu: "translate",
-        dashscope: "dashboard", vllm: "memory", ollama: "dns", gemini: "diamond",
-        moonshot: "dark_mode", minimax: "compress", aihubmix: "hub", siliconflow: "waves",
-        volcengine: "volcano", volcentineCodingPlan: "code", byteplus: "add_box",
-        byteplusCodingPlan: "code", openaiCodex: "terminal", githubCopilot: "code",
-    };
-
-    const provEntries = Object.entries(prov);
-    let configuredCount = 0;
-    let expandedProv = null;
-
-    const provTiles = new Map();
-
-    for (const [name, pc] of provEntries) {
-        const hasKey = !!(pc.apiKey);
-        if (hasKey) configuredCount++;
-        const displayName = name.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase());
-        const icon = PROV_ICONS[name] || "key";
-
-        const tile = document.createElement("div");
-        tile.className = "provider-tile" + (hasKey ? " configured" : "");
-        tile.dataset.provName = name;
-        tile.dataset.displayName = displayName.toLowerCase();
-        tile.innerHTML = `
-            <div class="provider-tile-icon"><span class="material-icons-round">${icon}</span></div>
-            <div class="provider-tile-name">${displayName}</div>
-            <span class="provider-tile-badge ${hasKey ? 'on' : 'off'}">${hasKey ? '✓ Configured' : 'Not set'}</span>`;
-
-        tile.addEventListener("click", () => {
-            const wasExpanded = tile.classList.contains("expanded");
-
-            list.querySelectorAll(".provider-tile").forEach(t => t.classList.remove("expanded"));
-            const oldExpand = list.querySelector(".provider-tile-expand");
-            if (oldExpand) oldExpand.remove();
-
-            if (wasExpanded) { expandedProv = null; return; }
-
-            tile.classList.add("expanded");
-            expandedProv = name;
-
-            const expandPanel = document.createElement("div");
-            expandPanel.className = "provider-tile-expand";
-            expandPanel.innerHTML = `
-                <div class="provider-expand-header">
-                    <div class="provider-expand-title">
-                        <span class="material-icons-round" style="font-size:18px">${icon}</span>
-                        ${displayName}
-                    </div>
-                    <button class="provider-expand-close" title="Close">
-                        <span class="material-icons-round" style="font-size:18px">close</span>
-                    </button>
-                </div>
-                <div class="field-row">
-                    <label>API Key</label>
-                    <input type="password" class="form-input prov-key" data-prov="${name}" value="${pc.apiKey || ""}" placeholder="${providerKeyPlaceholder(name)}">
-                </div>
-                <div class="field-row">
-                    <label>API Base URL</label>
-                    <input type="text" class="form-input prov-base" data-prov="${name}" value="${pc.apiBase || ""}" placeholder="(default)">
-                </div>`;
-
-            const keyInput = expandPanel.querySelector(".prov-key");
-            if (keyInput) {
-                keyInput.addEventListener("input", (e) => {
-                    pc.apiKey = e.target.value.trim();
-                    if (typeof lastSettingsConfig !== "undefined" && lastSettingsConfig.providers && lastSettingsConfig.providers[name]) {
-                        lastSettingsConfig.providers[name].apiKey = e.target.value.trim();
-                    }
-                });
-            }
-
-            const baseInput = expandPanel.querySelector(".prov-base");
-            if (baseInput) {
-                baseInput.addEventListener("input", (e) => {
-                    pc.apiBase = e.target.value.trim() || null;
-                    if (typeof lastSettingsConfig !== "undefined" && lastSettingsConfig.providers && lastSettingsConfig.providers[name]) {
-                        lastSettingsConfig.providers[name].apiBase = e.target.value.trim() || null;
-                    }
-                });
-            }
-
-            expandPanel.querySelector(".provider-expand-close").addEventListener("click", (e) => {
-                e.stopPropagation();
-                tile.classList.remove("expanded");
-                expandPanel.remove();
-                expandedProv = null;
-            });
-
-            expandPanel.addEventListener("click", (e) => e.stopPropagation());
-
-            tile.after(expandPanel);
-        });
-
-        list.appendChild(tile);
-        provTiles.set(name, tile);
-    }
-
-    const statsEl = $("provider-stats");
-    if (statsEl) {
-        statsEl.innerHTML = `<span class="stat-configured">${configuredCount} Configured</span><span class="stat-dot"></span><span>${provEntries.length} Total</span>`;
-    }
-
-    const searchInput = document.getElementById("provider-search");
-    if (searchInput) {
-        searchInput.addEventListener("input", () => {
-            const q = searchInput.value.toLowerCase().trim();
-            for (const [name, tile] of provTiles) {
-                const matches = !q || name.toLowerCase().includes(q) || tile.dataset.displayName.includes(q);
-                tile.style.display = matches ? "" : "none";
-            }
-            const expandPanel = list.querySelector(".provider-tile-expand");
-            if (expandPanel && expandedProv) {
-                const parentTile = provTiles.get(expandedProv);
-                if (parentTile && parentTile.style.display === "none") {
-                    expandPanel.remove();
-                    parentTile.classList.remove("expanded");
-                    expandedProv = null;
-                }
-            }
-        });
-    }
-
-    const tw = cfg.tools?.web || {};
-    const ts = tw.search || {};
-    $("s-tool-searchProvider").value = ts.provider || "brave";
-    $("s-tool-searchKey").value = ts.apiKey || "";
-    $("s-tool-searchMax").value = ts.maxResults ?? 5;
-    $("s-tool-proxy").value = tw.proxy || "";
-    const te = cfg.tools?.exec || {};
-    $("s-tool-execEnable").checked = te.enable !== false;
-    $("s-tool-execTimeout").value = te.timeout ?? 60;
-    $("s-tool-restrict").checked = !!cfg.tools?.restrictToWorkspace;
-
-
-    const gw = cfg.gateway || {};
-    $("s-gw-host").value = gw.host || "127.0.0.1";
-    $("s-gw-port").value = gw.port ?? 19999;
-
-    const hb = gw.heartbeat || {};
-    $("s-hb-enabled").checked = hb.enabled !== false;
-    $("s-hb-interval").value = hb.intervalMin ?? 30;
-    $("s-hb-profile").value = hb.profileId || "";
-
-    const ch = cfg.channels || {};
-
-    const targetChanSelect = $("s-hb-target-channel");
-    if (targetChanSelect) {
-        let html = '<option value="">Auto-detect</option>';
-        html += '<option value="webui">Web UI</option>';
-
-        for (const [name, cc] of Object.entries(ch)) {
-            if (["sendProgress", "sendToolHints"].includes(name) || typeof cc !== "object") continue;
-            if (cc.enabled === true) {
-                const displayName = name.charAt(0).toUpperCase() + name.slice(1);
-                html += `<option value="${name}">${displayName}</option>`;
-            }
-        }
-        targetChanSelect.innerHTML = html;
-    }
-
-    const targets = Object.keys(hb.targets || {});
-    if (targets.length > 0) {
-        const firstChan = targets[0];
-        if (targetChanSelect && targetChanSelect.querySelector(`option[value="${firstChan}"]`)) {
-            targetChanSelect.value = firstChan;
-        } else if (targetChanSelect) {
-            // Add it if it's currently selected but disabled, so it doesn't just disappear
-            targetChanSelect.innerHTML += `<option value="${firstChan}">${firstChan.charAt(0).toUpperCase() + firstChan.slice(1)} (disabled)</option>`;
-            targetChanSelect.value = firstChan;
-        }
-        $("s-hb-target-id").value = hb.targets[firstChan] || "";
-    } else {
-        if (targetChanSelect) targetChanSelect.value = "";
-        $("s-hb-target-id").value = "";
-    }
-
-
-    $("s-ch-sendProgress").checked = ch.sendProgress !== false;
-    $("s-ch-sendToolHints").checked = !!ch.sendToolHints;
-
-    const detail = $("channels-detail");
-    detail.innerHTML = "";
-    const skip = ["sendProgress", "sendToolHints"];
-
-    const CH_ICON_MAP = {
-        telegram: "send", discord: "forum", slack: "tag", whatsapp: "chat",
-        webui: "language", cli: "terminal", email: "email", dingtalk: "notifications",
-        feishu: "chat_bubble", matrix: "grid_view", mochat: "sms", qq: "forum",
-        wecom: "business",
-    };
-
-    const EMAIL_FIELD_CONFIG = {
-        imapHost: { label: "IMAP Server", section: "inbound", type: "text", placeholder: "imap.gmail.com" },
-        imapPort: { label: "IMAP Port", section: "inbound", type: "number", placeholder: "993" },
-        imapUsername: { label: "IMAP Username", section: "inbound", type: "text", placeholder: "email@gmail.com" },
-        imapPassword: { label: "IMAP Password", section: "inbound", type: "password", placeholder: "App password" },
-        imapUseSsl: { label: "IMAP SSL", section: "inbound", type: "boolean" },
-        imapMailbox: { label: "IMAP Mailbox", section: "inbound", type: "text", placeholder: "INBOX" },
-        smtpHost: { label: "SMTP Server", section: "outbound", type: "text", placeholder: "smtp.gmail.com" },
-        smtpPort: { label: "SMTP Port", section: "outbound", type: "number", placeholder: "587" },
-        smtpUsername: { label: "SMTP Username", section: "outbound", type: "text", placeholder: "email@gmail.com" },
-        smtpPassword: { label: "SMTP Password", section: "outbound", type: "password", placeholder: "App password" },
-        smtpUseTls: { label: "SMTP STARTTLS", section: "outbound", type: "boolean" },
-        smtpUseSsl: { label: "SMTP SSL", section: "outbound", type: "boolean" },
-        fromAddress: { label: "From Address", section: "outbound", type: "text", placeholder: "shibaclaw@gmail.com" },
-        autoReplyEnabled: { label: "Auto Reply", section: "general", type: "boolean" },
-        pollIntervalSeconds: { label: "Poll Interval (sec)", section: "general", type: "number", placeholder: "30" },
-        markSeen: { label: "Mark as Read", section: "general", type: "boolean" },
-        maxBodyChars: { label: "Max Body Length", section: "general", type: "number", placeholder: "12000" },
-        subjectPrefix: { label: "Reply Prefix", section: "general", type: "text", placeholder: "Re: " },
-        allowFrom: { label: "Allowed Senders", section: "general", type: "array", placeholder: "email1@test.com, email2@test.com" },
-    };
-
-    const channelEntries = [];
-    for (const [name, cc] of Object.entries(ch)) {
-        if (skip.includes(name) || typeof cc !== "object") continue;
-        channelEntries.push([name, cc]);
-    }
-
-    const channelListEl = document.getElementById("channel-list");
-    const channelDetailPane = document.getElementById("channel-detail-pane");
-    if (channelListEl) channelListEl.innerHTML = "";
-
-    let activeCount = 0;
-    let selectedChannel = null;
-
-    function buildChannelFields(name, cc) {
-        const enabled = cc.enabled === true;
-        let fieldsHtml = `
-            <div class="field-row">
-                <label>Enabled</label>
-                <label class="toggle"><input type="checkbox" class="ch-enabled" data-ch="${name}" ${enabled ? "checked" : ""}><span class="toggle-slider"></span></label>
-            </div>
-        `;
-
-        if (name === "email") {
-            fieldsHtml += `
-            <div class="field-row">
-                <label>Authorize IMAP/SMTP access</label>
-                <label class="toggle"><input type="checkbox" class="ch-field" data-ch="${name}" data-key="consentGranted" data-type="boolean" ${(cc.consentGranted || cc.consent_granted) ? "checked" : ""}><span class="toggle-slider"></span></label>
-            </div>
-            `;
-        }
-
-        if (name === "email" && EMAIL_FIELD_CONFIG) {
-            const sections = { inbound: [], outbound: [], general: [] };
-            for (const [key, val] of Object.entries(cc)) {
-                if (key === "enabled" || key === "consentGranted" || key === "consent_granted") continue;
-                const fieldConfig = EMAIL_FIELD_CONFIG[key] || null;
-                const section = fieldConfig?.section || "general";
-                const label = fieldConfig?.label || key;
-                const placeholder = fieldConfig?.placeholder || "";
-
-                let valStr = "";
-                let originalType = typeof val;
-                if (Array.isArray(val)) { originalType = "array"; valStr = val.join(", "); }
-                else if (val !== null && originalType === "object") { originalType = "object"; valStr = JSON.stringify(val); }
-                else { if (val === null) originalType = "string"; valStr = val === null ? "" : String(val); }
-
-                let inputHtml = "";
-                if (originalType === "boolean" || fieldConfig?.type === "boolean") {
-                    inputHtml = `<div class="field-row"><label>${label}</label><label class="toggle"><input type="checkbox" class="ch-field" data-ch="${name}" data-key="${key}" data-type="boolean" ${valStr === "true" || val === true ? "checked" : ""}><span class="toggle-slider"></span></label></div>`;
-                } else {
-                    const isPassword = fieldConfig?.type === "password" || key.toLowerCase().includes("password") || key.toLowerCase().includes("secret");
-                    const safeVal = String(valStr).replace(/"/g, '&quot;');
-                    inputHtml = `<div class="field-row"><label>${label}</label><input type="${isPassword ? "password" : (fieldConfig?.type || "text")}" class="form-input ch-field" data-ch="${name}" data-key="${key}" data-type="${originalType}" value="${safeVal}" placeholder="${placeholder}"></div>`;
-                }
-                if (!sections[section]) sections[section] = [];
-                sections[section].push(inputHtml);
-            }
-
-            const sectionLabels = { inbound: '📥 Email IN (IMAP)', outbound: '📤 Email OUT (SMTP)', general: '⚙️ General' };
-            for (const [sectionKey, sectionFields] of Object.entries(sections)) {
-                if (sectionFields.length > 0) {
-                    fieldsHtml += `<div class="channel-detail-section-label">${sectionLabels[sectionKey] || sectionKey}</div>`;
-                    fieldsHtml += sectionFields.join("");
-                }
-            }
-        } else {
-            for (const [key, val] of Object.entries(cc)) {
-                if (key === "enabled" || key === "consentGranted" || key === "consent_granted") continue;
-                let inputType = "text";
-                let valStr = "";
-                let originalType = typeof val;
-                if (Array.isArray(val)) { originalType = "array"; valStr = val.join(", "); }
-                else if (val !== null && originalType === "object") { originalType = "object"; valStr = JSON.stringify(val); }
-                else { if (val === null) originalType = "string"; valStr = val === null ? "" : String(val); }
-
-                if (originalType === "boolean") {
-                    fieldsHtml += `<div class="field-row"><label>${key}</label><label class="toggle"><input type="checkbox" class="ch-field" data-ch="${name}" data-key="${key}" data-type="boolean" ${val ? "checked" : ""}><span class="toggle-slider"></span></label></div>`;
-                    continue;
-                }
-
-                const lowerKey = key.toLowerCase();
-                if (lowerKey.includes("token") || lowerKey.includes("secret") || lowerKey.includes("password")) inputType = "password";
-
-                const safeVal = String(valStr).replace(/"/g, '&quot;');
-                fieldsHtml += `<div class="field-row"><label>${key}</label><input type="${inputType}" class="form-input ch-field" data-ch="${name}" data-key="${key}" data-type="${originalType}" value="${safeVal}"></div>`;
-            }
-        }
-        return fieldsHtml;
-    }
-
-    function selectChannel(name, cc) {
-        if (!channelDetailPane || !channelListEl) return;
-        selectedChannel = name;
-
-        channelListEl.querySelectorAll(".channel-list-item").forEach(el => {
-            el.classList.toggle("active", el.dataset.ch === name);
-        });
-
-        const displayName = name.charAt(0).toUpperCase() + name.slice(1);
-        const iconName = CH_ICON_MAP[name] || "chat";
-        const fieldsHtml = buildChannelFields(name, cc);
-
-        channelDetailPane.innerHTML = `
-            <div class="channel-detail-header">
-                <div class="channel-detail-icon"><span class="material-icons-round">${iconName}</span></div>
-                <div class="channel-detail-title">${displayName}</div>
-            </div>
-            ${fieldsHtml}`;
-
-        const hiddenInputs = detail.querySelectorAll(`input[data-ch="${name}"]`);
-        const hiddenInputMap = new Map();
-        hiddenInputs.forEach(el => {
-            const k = el.classList.contains("ch-enabled") ? "__enabled__" : el.dataset.key;
-            hiddenInputMap.set(k, el);
-        });
-
-        const paneInputs = channelDetailPane.querySelectorAll(`input[data-ch="${name}"]`);
-        paneInputs.forEach(paneEl => {
-            const k = paneEl.classList.contains("ch-enabled") ? "__enabled__" : paneEl.dataset.key;
-            const hiddenEl = hiddenInputMap.get(k);
-            if (!hiddenEl) return;
-
-            if (hiddenEl.type === "checkbox") {
-                paneEl.checked = hiddenEl.checked;
-            } else {
-                paneEl.value = hiddenEl.value;
-            }
-
-            if (paneEl.type === "checkbox") {
-                paneEl.addEventListener("change", () => { hiddenEl.checked = paneEl.checked; });
-            } else {
-                paneEl.addEventListener("input", () => { hiddenEl.value = paneEl.value; });
-            }
-        });
-
-        const enabledToggle = channelDetailPane.querySelector(`input.ch-enabled[data-ch="${name}"]`);
-        if (enabledToggle) {
-            enabledToggle.addEventListener("change", () => {
-                const item = channelListEl.querySelector(`.channel-list-item[data-ch="${name}"]`);
-                const dot = item?.querySelector(".channel-list-status");
-                if (item) item.classList.toggle("enabled", enabledToggle.checked);
-                if (dot) {
-                    dot.className = "channel-list-status " + (enabledToggle.checked ? "on" : "off");
-                }
-                updateChannelStats();
-            });
-        }
-    }
-
-    function updateChannelStats() {
-        const statsEl = document.getElementById("channel-stats");
-        if (!statsEl) return;
-        let active = 0;
-        channelListEl.querySelectorAll(".channel-list-item").forEach(el => {
-            if (el.classList.contains("enabled")) active++;
-        });
-        statsEl.innerHTML = `<span class="stat-active">${active} Active</span><span class="stat-dot"></span><span>${channelEntries.length} Total</span>`;
-    }
-
-    for (const [name, cc] of channelEntries) {
-        const enabled = cc.enabled === true;
-        if (enabled) activeCount++;
-
-        const fieldsHtml = buildChannelFields(name, cc);
-        const hiddenBlock = document.createElement("div");
-        hiddenBlock.innerHTML = fieldsHtml;
-        detail.appendChild(hiddenBlock);
-    }
-
-    let firstActive = null;
-    for (const [name, cc] of channelEntries) {
-        const enabled = cc.enabled === true;
-        const displayName = name.charAt(0).toUpperCase() + name.slice(1);
-        const iconName = CH_ICON_MAP[name] || "chat";
-
-        if (channelListEl) {
-            const item = document.createElement("div");
-            item.className = "channel-list-item" + (enabled ? " enabled" : "");
-            item.dataset.ch = name;
-            item.innerHTML = `
-                <span class="material-icons-round channel-list-icon">${iconName}</span>
-                <span class="channel-list-name">${displayName}</span>
-                <span class="channel-list-status ${enabled ? 'on' : 'off'}"></span>`;
-            item.addEventListener("click", () => selectChannel(name, cc));
-            channelListEl.appendChild(item);
-
-            if (!firstActive && enabled) firstActive = [name, cc];
-        }
-    }
-
-    const chStatsEl = document.getElementById("channel-stats");
-    if (chStatsEl) {
-        chStatsEl.innerHTML = `<span class="stat-active">${activeCount} Active</span><span class="stat-dot"></span><span>${channelEntries.length} Total</span>`;
-    }
-
-    if (firstActive) {
-        selectChannel(firstActive[0], firstActive[1]);
-    } else if (channelEntries.length > 0) {
-        selectChannel(channelEntries[0][0], channelEntries[0][1]);
-    }
-}
-
-/* Legacy MCP accordion card functions removed in favor of MCP Server Manager panel */
-
-window.saveSettings = async function () {
-    const patch = {
-        agents: {
-            defaults: {
-                provider: "auto",
-                model: $("s-agent-model").value,
-                consolidationModel: $("s-agent-consolidationModel").value || null,
-                temperature: parseFloat($("s-agent-temp").value),
-                maxTokens: parseInt($("s-agent-maxTokens").value),
-                contextWindowTokens: parseInt($("s-agent-ctxTokens").value),
-                maxToolIterations: parseInt($("s-agent-maxIter").value),
-                toolTimeout: parseInt($("s-agent-toolTimeout").value),
-                loopWallTimeout: parseInt($("s-agent-loopWallTimeout").value),
-                subagentTimeout: parseInt($("s-agent-subagentTimeout").value),
-                workspace: $("s-agent-workspace").value,
-                reasoningEffort: $("s-agent-reasoning").value || null,
-                pinnedSkills: window._skillsPinnedList || [],
-                maxPinnedSkills: window._skillsMaxPinned || 5,
-            }
-        },
-        providers: (typeof lastSettingsConfig !== "undefined" && lastSettingsConfig.providers) ? JSON.parse(JSON.stringify(lastSettingsConfig.providers)) : {},
-        tools: {
-            web: {
-                proxy: $("s-tool-proxy").value || null,
-                search: {
-                    provider: $("s-tool-searchProvider").value,
-                    apiKey: $("s-tool-searchKey").value,
-                    maxResults: parseInt($("s-tool-searchMax").value),
-                }
-            },
-            exec: {
-                enable: $("s-tool-execEnable").checked,
-                timeout: parseInt($("s-tool-execTimeout").value),
-            },
-            restrictToWorkspace: $("s-tool-restrict").checked,
-        },
-        gateway: {
-            host: $("s-gw-host").value,
-            port: parseInt($("s-gw-port").value),
-            heartbeat: {
-                enabled: $("s-hb-enabled").checked,
-                intervalMin: parseInt($("s-hb-interval").value),
-                model: $("s-hb-model").value || null,
-                profileId: $("s-hb-profile").value || null,
-                targets: (() => {
-                    const chan = $("s-hb-target-channel").value;
-                    const tid = $("s-hb-target-id").value;
-                    if (chan) {
-                        return { [chan]: tid };
-                    }
-                    return {};
-                })()
-            }
-        },
-        channels: {
-            sendProgress: $("s-ch-sendProgress").checked,
-            sendToolHints: $("s-ch-sendToolHints").checked,
-        },
-        audio: {
-            providerUrl: $("s-audio-providerUrl").value || null,
-            apiKey: $("s-audio-apiKey").value || null,
-            model: $("s-audio-model").value || "whisper-large-v3-turbo",
-            ttsEnabled: $("tts-toggle").checked,
-            ttsProvider: $("s-audio-ttsProvider").value || "browser",
-            ttsVoice: $("s-audio-ttsVoice").value || "F1",
-            ttsLang: $("s-audio-ttsLang").value || "en",
-            ttsSpeed: parseFloat($("s-audio-ttsSpeed").value) || 1.0,
-        }
-    };
-
-    document.querySelectorAll(".prov-key").forEach(el => {
-        const name = el.dataset.prov;
-        if (!patch.providers[name]) patch.providers[name] = {};
-        patch.providers[name].apiKey = el.value.trim();
-    });
-    document.querySelectorAll(".prov-base").forEach(el => {
-        const name = el.dataset.prov;
-        if (!patch.providers[name]) patch.providers[name] = {};
-        const value = el.value.trim();
-        patch.providers[name].apiBase = value || null;
-    });
-
-    const chDetailRoot = document.getElementById("channels-detail") || document;
-    chDetailRoot.querySelectorAll(".ch-enabled").forEach(el => {
-        const name = el.dataset.ch;
-        if (!patch.channels[name]) patch.channels[name] = {};
-        patch.channels[name].enabled = el.checked;
-    });
-    chDetailRoot.querySelectorAll(".ch-field").forEach(el => {
-        const name = el.dataset.ch;
-        const key = el.dataset.key;
-        const type = el.dataset.type;
-        if (!patch.channels[name]) patch.channels[name] = {};
-
-        let val;
-        if (type === "boolean") {
-            val = el.checked;
-        } else if (type === "array") {
-            val = el.value ? el.value.split(",").map(s => s.trim()).filter(s => s) : [];
-        } else if (type === "object") {
-            try { val = JSON.parse(el.value); } catch (e) { val = {}; }
-        } else if (type === "number") {
-            val = Number(el.value);
-        } else {
-            val = el.value;
-        }
-        patch.channels[name][key] = val;
-    });
-
-    // Persist UI-only preferences locally so changes are immediate
-    try {
-        if (document.getElementById("s-ui-hide-thoughts")) localStorage.setItem("shibaclaw_hide_thoughts", document.getElementById("s-ui-hide-thoughts").checked ? "true" : "false");
-        if (document.getElementById("s-ui-collapse-thoughts")) localStorage.setItem("shibaclaw_collapse_thoughts", document.getElementById("s-ui-collapse-thoughts").checked ? "true" : "false");
-        if (document.getElementById("s-ui-mobile-enter-newline")) localStorage.setItem("shibaclaw_mobile_enter_newline", document.getElementById("s-ui-mobile-enter-newline").checked ? "true" : "false");
-    } catch (e) { }
-
-    try {
-        const res = await authFetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(patch)
-        });
-        const data = await res.json();
-        if (typeof closeSettingsView === "function") closeSettingsView();
-        _availableModels = []; // Clear model cache to force refresh
-        _hasFetchedModels = false;
-        fetchStatus();
-
-        if (data.restarted) {
-            shibaDialog("alert", "Restart Required", "Gateway is restarting to apply network changes.", { confirmText: "OK" });
-        } else {
-            // Hot-reloaded successfully without restarting
-            let container = document.getElementById("toast-container");
-            if (!container) {
-                container = document.createElement("div");
-                container.id = "toast-container";
-                document.body.appendChild(container);
-            }
-            const toast = document.createElement("div");
-            toast.className = "toast toast-success";
-            toast.innerHTML = `<span class="toast-icon material-icons-round">check_circle</span> Settings saved & hot-reloaded successfully!`;
-            container.appendChild(toast);
-            setTimeout(() => { toast.classList.add("visible"); }, 100);
-            setTimeout(() => {
-                toast.classList.remove("visible");
-                toast.classList.add("hiding");
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-    } catch (e) {
-        shibaDialog("alert", "Error", "Error saving settings: " + e, { confirmText: "Close", danger: true });
-    }
-};
-
-
 // ── UI Helpers ────────────────────────────────────────────────
 function activateChat() {
     welcomeScreen.style.display = "none";
@@ -2172,1121 +987,8 @@ function hideThinking() {
 }
 
 
-// ── Login/Logout UI ───────────────────────────────────────────
-function syncFooterActions() {
-    const logoutBtn = document.getElementById("btn-logout");
-    if (logoutBtn) logoutBtn.hidden = !state.authRequired;
-}
-
-function showLogin(errorMsg = "") {
-    const overlay = document.getElementById("login-overlay");
-    const appContainer = document.getElementById("app-container");
-    const errorEl = document.getElementById("login-error");
-    const tokenInput = document.getElementById("login-token");
-
-    overlay.style.display = "flex";
-    appContainer.style.display = "none";
-
-    if (errorMsg) {
-        errorEl.textContent = errorMsg;
-        errorEl.style.display = "block";
-        // Shake animation
-        const card = overlay.querySelector(".login-card");
-        card.classList.remove("shake");
-        void card.offsetWidth; // force reflow
-        card.classList.add("shake");
-    } else {
-        errorEl.style.display = "none";
-    }
-
-    setTimeout(() => tokenInput.focus(), 100);
-}
-
-function hideLogin() {
-    const overlay = document.getElementById("login-overlay");
-    const appContainer = document.getElementById("app-container");
-    overlay.style.display = "none";
-    appContainer.style.display = "";
-}
-
-async function attemptLogin(token) {
-    try {
-        const res = await fetch("/api/auth/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token }),
-        });
-        const data = await res.json();
-        if (data.valid) {
-            setStoredToken(token);
-            hideLogin();
-            startApp();
-            return true;
-        } else {
-            showLogin("Invalid token. Check the terminal output.");
-            return false;
-        }
-    } catch (e) {
-        showLogin("Connection error. Is the server running?");
-        return false;
-    }
-}
-
-function logout() {
-    clearStoredToken();
-    _clearAllOAuthPolls();
-    if (state.socket) {
-        state.socket.disconnect({ clearToken: true });
-        state.socket = null;
-    }
-    if (state.healthTimer) {
-        clearInterval(state.healthTimer);
-        state.healthTimer = null;
-    }
-    if (state.historyTimer) {
-        clearInterval(state.historyTimer);
-        state.historyTimer = null;
-    }
-    if (state.autoTimer) {
-        clearInterval(state.autoTimer);
-        state.autoTimer = null;
-    }
-    state._initialConnectDone = false;
-    state.contextModalOpen = false;
-    state.processing = false;
-    state.sessionId = null;
-    state.sessionLoadSeq++;
-    if (typeof resetNotificationCenter === "function") {
-        resetNotificationCenter();
-    }
-    setStatusIndicator("disconnected");
-    const logoutBtn = document.getElementById("btn-logout");
-    if (logoutBtn) logoutBtn.hidden = true;
-    showLogin();
-}
-
-function startApp() {
-    initSocket();
-    initListeners();
-    fetchStatus();
-    loadHistory();
-    initAutomationSections();
-    refreshTokenBadge();
-    initFileHandlers();
-    initOnboardWizard();
-    if (typeof initNotificationCenter === "function") {
-        void initNotificationCenter();
-    }
-    chatInput.focus();
-
-    syncFooterActions();
-
-    // Gateway health check every 5s
-    checkGatewayHealth();
-    if (state.healthTimer) clearInterval(state.healthTimer);
-    state.healthTimer = setInterval(checkGatewayHealth, 5000);
-
-    // Auto-refresh history every 30s
-    if (state.historyTimer) clearInterval(state.historyTimer);
-    state.historyTimer = setInterval(loadHistory, 30000);
-
-    // Auto-refresh automation every 30s
-    if (state.autoTimer) clearInterval(state.autoTimer);
-    state.autoTimer = setInterval(() => { loadCronSection(); loadHeartbeatSection(); }, 30000);
-}
-
-
-// ── Update Panel ──────────────────────────────────────────────
-let _updateState = { manifestUrl: null, manifest: null, result: null, busy: false, commands: {} };
-
-function _updateValue(data, key) {
-    return (data && data[key]) ? data[key] : "-";
-}
-
-function _renderUpdateManifestSection(manifest, personalFiles) {
-    let section = "";
-    if (manifest && manifest.release_notes) {
-        section += `
-            <div class="update-notes">
-                <div class="update-notes-title"><span class="material-icons-round">article</span> What's new</div>
-                <div class="update-notes-body">${escapeHtml(manifest.release_notes)}</div>
-            </div>`;
-    }
-
-    if (personalFiles && personalFiles.length > 0) {
-        const items = personalFiles.map(file => {
-            const note = file.note ? ` <span class="update-file-note">- ${escapeHtml(file.note)}</span>` : "";
-            return `<li><span class="material-icons-round" style="font-size:14px;vertical-align:middle;color:var(--accent-orange)">description</span> <code>${escapeHtml(file.path)}</code>${note}</li>`;
-        }).join("");
-        section += `
-            <div class="update-personal">
-                <div class="update-personal-title"><span class="material-icons-round">folder_open</span> Files changed by this release</div>
-                <ul class="update-personal-list">${items}</ul>
-                <div class="update-personal-note">If you customized any of these tracked files, back them up before updating. After the update, run <code>shibaclaw onboard</code> again to refresh them. If you keep personal information in these files, save a copy first so you can restore it afterward.</div>
-            </div>`;
-    }
-
-    return section;
-}
-
-function _renderUpdateActionSection(data) {
-    const actionCommand = (data.action_command || "").trim();
-    const actionUrl = (data.action_url || data.release_url || "").trim();
-    const actionLabel = escapeHtml(data.action_label || "Suggested action");
-    const notes = Array.isArray(data.notes) ? data.notes : [];
-
-    _updateState.commands = { action: actionCommand };
-
-    const commandRow = actionCommand ? `
-        <div style="margin-top:8px;font-size:13px;color:var(--text-muted)">Command</div>
-        <div class="update-cmd-row">
-            <code>${escapeHtml(actionCommand)}</code>
-            <button class="btn-link" onclick="copyUpdateCommand('action')" title="Copy">
-                <span class="material-icons-round" style="font-size:16px">content_copy</span>
-            </button>
-        </div>` : "";
-
-    const notesHtml = notes.length ? `
-        <ul class="update-personal-list" style="margin-top:12px">
-            ${notes.map(note => `<li>${escapeHtml(note)}</li>`).join("")}
-        </ul>` : "";
-
-    const buttons = [];
-    if (data.update_available && data.action_kind === "automatic") {
-        buttons.push(`
-            <button class="btn-primary" onclick="runUpdateAction()" ${_updateState.busy ? "disabled" : ""}>
-                <span class="material-icons-round" style="font-size:14px;vertical-align:middle">system_update</span> Install update
-            </button>`);
-    }
-    if (actionUrl) {
-        buttons.push(`
-            <a href="${escapeHtml(actionUrl)}" target="_blank" class="btn-secondary">
-                <span class="material-icons-round" style="font-size:14px;vertical-align:middle">open_in_new</span> ${actionLabel}
-            </a>`);
-    }
-    if (data.release_url && data.release_url !== actionUrl) {
-        buttons.push(`
-            <a href="${escapeHtml(data.release_url)}" target="_blank" class="btn-secondary">
-                <span class="material-icons-round" style="font-size:14px;vertical-align:middle">article</span> Release notes
-            </a>`);
-    }
-
-    if (!commandRow && buttons.length === 0 && !notesHtml) {
-        return "";
-    }
-
-    return `
-        <div class="update-notes" style="margin-top:16px">
-            <div class="update-notes-title"><span class="material-icons-round">terminal</span> How to update</div>
-            ${commandRow}
-            ${notesHtml}
-            ${buttons.length ? `<div class="update-actions" style="margin-top:16px">${buttons.join("")}</div>` : ""}
-        </div>`;
-}
-
-window.copyUpdateCommand = async function (key) {
-    const value = ((_updateState.commands || {})[key] || "").trim();
-    if (!value) return;
-    try {
-        await navigator.clipboard.writeText(value);
-    } catch (e) {
-        console.error("copyUpdateCommand", e);
-    }
-};
-
-window.runUpdateAction = async function () {
-    const panel = $("update-status-container");
-    const update = _updateState.result;
-    if (!panel || !update || _updateState.busy) return;
-    if (update.action_kind !== "automatic") return;
-
-    const confirmed = await shibaDialog(
-        "confirm",
-        "Apply update?",
-        "ShibaClaw will restart after a successful update.",
-        { confirmText: "Update" }
-    );
-    if (!confirmed) return;
-
-    _updateState.busy = true;
-    const isPip = update.install_method === "pip";
-    
-    panel.innerHTML = `
-        <div class="update-progress-card">
-            <div class="update-progress-icon-wrap">
-                <span class="material-icons-round update-icon-pulsing">system_update</span>
-            </div>
-            <div class="update-progress-container">
-                <div class="update-progress-header">
-                    <span class="update-progress-title">${isPip ? "Installing Update via pip" : "Downloading Update"}</span>
-                    ${isPip ? "" : '<span class="update-progress-percent" id="update-progress-percent">0%</span>'}
-                </div>
-                <div class="update-progress-track ${isPip ? "indeterminate" : ""}">
-                    <div id="update-progress-fill" class="update-progress-fill" style="${isPip ? "width: 100%;" : "width: 0%;"}"></div>
-                </div>
-                <div class="update-progress-status" id="update-progress-text">${isPip ? "Running pip upgrade in background, this may take a few minutes..." : "Preparing update..."}</div>
-            </div>
-        </div>`;
-
-    try {
-        const res = await authFetch("/api/update/apply", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ update, manifest: _updateState.manifest }),
-        });
-        const report = await res.json();
-        if (!res.ok || report.error) {
-            throw new Error(report.error || report.message || `HTTP ${res.status}`);
-        }
-
-        const ok = (report.pip && report.pip.ok) || (report.exe && report.exe.ok);
-        const output = (report.pip && report.pip.output) || (report.exe && report.exe.output) || "";
-        const installerOutput = output ? escapeHtml(output) : "";
-        const message = escapeHtml(report.message || "Update complete.");
-        const icon = ok ? "check_circle" : "error_outline";
-        const color = ok ? "var(--accent-green)" : "var(--accent-red)";
-        const footer = report.restarting
-            ? '<div class="update-meta">Restarting ShibaClaw now...</div>'
-            : '<div class="update-meta"><button class="btn-link" onclick="loadUpdatePanel(true)">Refresh status</button></div>';
-
-        panel.innerHTML = `
-            <div class="update-available">
-                <span class="material-icons-round" style="font-size:48px;color:${color}">${icon}</span>
-                <div class="update-ok-text">${message}</div>
-                ${installerOutput ? `<div class="update-notes" style="margin-top:16px"><div class="update-notes-title"><span class="material-icons-round">terminal</span> Installer output</div><pre style="white-space:pre-wrap;margin:0;color:var(--text-secondary)">${installerOutput}</pre></div>` : ""}
-                ${footer}
-            </div>`;
-    } catch (e) {
-        const msg = e.message || "";
-        const isNetworkOrTimeout = e.name === "TypeError" || msg.includes("HTTP 504") || msg.includes("HTTP 502") || msg.includes("Failed to fetch") || msg.includes("NetworkError");
-        
-        if (isNetworkOrTimeout) {
-            panel.innerHTML = `
-                <div class="update-progress-card">
-                    <div class="update-progress-icon-wrap">
-                        <span class="material-icons-round update-icon-pulsing" style="color:var(--accent-orange)">system_update</span>
-                    </div>
-                    <div class="update-progress-container">
-                        <div class="update-progress-header">
-                            <span class="update-progress-title">Update in Progress</span>
-                        </div>
-                        <div class="update-progress-status" style="white-space:normal;line-height:1.4">
-                            The installation is taking a while or the server is restarting. The update is continuing in the background. Please wait a moment and then check the status.
-                        </div>
-                        <div class="update-meta" style="margin-top:12px">
-                            <button class="btn-primary" onclick="loadUpdatePanel(true)">Refresh status</button>
-                        </div>
-                    </div>
-                </div>`;
-        } else {
-            panel.innerHTML = `<div class="update-error"><span class="material-icons-round">error_outline</span> ${escapeHtml(msg || "Failed to apply the update.")}<br><button class="btn-secondary" style="margin-top:12px" onclick="loadUpdatePanel(true)">Retry</button></div>`;
-        }
-    } finally {
-        _updateState.busy = false;
-    }
-};
-
-window.updateDownloadProgress = function (percent) {
-    const textEl = document.getElementById("update-progress-text");
-    const barEl = document.getElementById("update-progress-fill");
-    const percentEl = document.getElementById("update-progress-percent");
-    if (textEl) textEl.textContent = `Downloading update package...`;
-    if (percentEl) percentEl.textContent = `${percent}%`;
-    if (barEl) barEl.style.width = percent + "%";
-};
-
-async function loadUpdatePanel(force = false) {
-    const panel = $("update-status-container");
-    if (!panel) return;
-
-    if (_updateState.busy) {
-        return;
-    }
-
-    _updateState.manifestUrl = null;
-    _updateState.manifest = null;
-    _updateState.result = null;
-    _updateState.commands = {};
-
-    panel.innerHTML = `<div class="update-checking"><span class="material-icons-round spin">progress_activity</span> Checking for updates...</div>`;
-
-    try {
-        const url = "/api/update/check" + (force ? "?force=1" : "");
-        const res = await authFetch(url);
-        const data = await res.json();
-
-        if (data.error && !data.current) {
-            panel.innerHTML = `<div class="update-error"><span class="material-icons-round">error_outline</span> ${escapeHtml(data.error)}<br><button class="btn-secondary" style="margin-top:12px" onclick="loadUpdatePanel(true)">Retry</button></div>`;
-            return;
-        }
-
-        _updateState.result = data;
-
-        const checkedAt = data.checked_at ? new Date(data.checked_at * 1000).toLocaleString() : "-";
-        const displayCurrent = escapeHtml(_updateValue(data, "display_current") || _updateValue(data, "current"));
-        const displayLatest = escapeHtml(_updateValue(data, "display_latest") || _updateValue(data, "latest"));
-        const summary = escapeHtml(data.summary || (data.update_available ? "Update available." : "You're up to date."));
-
-        let manifestSection = "";
-        if (data.manifest_url && data.update_available) {
-            _updateState.manifestUrl = data.manifest_url;
-            try {
-                const mRes = await authFetch("/api/update/manifest?url=" + encodeURIComponent(data.manifest_url));
-                const mData = await mRes.json();
-                _updateState.manifest = mData.manifest || null;
-                manifestSection = _renderUpdateManifestSection(_updateState.manifest, mData.personal_files || []);
-            } catch (e) {
-                manifestSection = `<div class="update-notes" style="color:var(--text-muted);font-size:12px">Could not load update details.</div>`;
-            }
-        }
-
-        const actionSection = _renderUpdateActionSection(data);
-        const warningSection = data.error ? `
-            <div class="update-notes" style="margin-top:16px">
-                <div class="update-notes-title"><span class="material-icons-round">warning</span> Check warning</div>
-                <div class="update-notes-body">${escapeHtml(data.error)}</div>
-            </div>` : "";
-
-        const headline = data.update_available ? "Update available" : "Status checked";
-        const icon = data.update_available ? "system_update" : "check_circle";
-        const iconColor = data.update_available ? "var(--accent-orange)" : "var(--accent-green)";
-        const versionRow = data.update_available ? `
-            <div class="update-version-row">
-                <span class="update-badge current">${displayCurrent}</span>
-                <span class="material-icons-round" style="color:var(--text-muted)">arrow_forward</span>
-                <span class="update-badge latest">${displayLatest}</span>
-            </div>` : `
-            <div class="update-version-row">
-                <span class="update-badge current">${displayCurrent}</span>
-            </div>`;
-
-        panel.innerHTML = `
-            <div class="update-${data.update_available ? "available" : "ok"}">
-                <span class="material-icons-round" style="font-size:48px;color:${iconColor}">${icon}</span>
-                <div class="update-ok-text">${headline}</div>
-                <div class="update-meta" style="margin-bottom:8px">${summary}</div>
-                ${versionRow}
-                ${manifestSection}
-                ${warningSection}
-                ${actionSection}
-                <div class="update-meta">Last checked: ${checkedAt}${data.stale ? " (cached)" : ""} · <button class="btn-link" onclick="loadUpdatePanel(true)">Check again</button></div>
-            </div>`;
-    } catch (e) {
-        panel.innerHTML = `<div class="update-error"><span class="material-icons-round">error_outline</span> Failed to check for updates.<br><button class="btn-secondary" style="margin-top:12px" onclick="loadUpdatePanel(true)">Retry</button></div>`;
-    }
-}
-
-
 // ── Onboard Wizard ──────────────────────────────────────────
-const _ob = { step: 1, provider: null, providers: [], templates: { existing: [] } };
-
-function initOnboardWizard() {
-    if (state.onboardInitialized) return;
-    state.onboardInitialized = true;
-
-    const eye = document.getElementById("ob-eye-toggle");
-    const keyInput = document.getElementById("ob-api-key");
-    if (eye && keyInput) {
-        eye.addEventListener("click", () => {
-            const show = keyInput.type === "password";
-            keyInput.type = show ? "text" : "password";
-            eye.querySelector("span").textContent = show ? "visibility" : "visibility_off";
-        });
-    }
-}
-
-window.openOnboardWizard = async function () {
-    _ob.step = 1;
-    _ob.provider = null;
-    _ob._lastModelProvider = null;
-    document.getElementById("ob-api-key").value = "";
-    document.getElementById("ob-model-input").value = "";
-    document.getElementById("ob-btn-finish").style.width = "";
-    _obShowStep(1);
-    openModal("onboard-modal");
-    await _obLoadProviders();
-    await _obLoadTemplates();
-};
-
-async function _obLoadProviders() {
-    const grid = document.getElementById("ob-provider-grid");
-    grid.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted)"><span class="material-icons-round spin">progress_activity</span></div>';
-    try {
-        const res = await authFetch("/api/onboard/providers");
-        const data = await res.json();
-        _ob.providers = data.providers || [];
-        _ob.currentProvider = data.current_provider;
-        _ob.currentModel = data.current_model;
-        _obRenderGrid();
-    } catch (e) {
-        grid.innerHTML = '<p style="color:var(--accent-red)">Failed to load providers</p>';
-    }
-}
-
-async function _obLoadTemplates() {
-    try {
-        const res = await authFetch("/api/onboard/templates");
-        const data = await res.json();
-        _ob.templates = { existing: data.existing_files || [], new_files: data.new_files || [] };
-    } catch (e) { _ob.templates = { existing: [], new_files: [] }; }
-}
-
-function _obRenderGrid() {
-    const grid = document.getElementById("ob-provider-grid");
-    grid.innerHTML = "";
-    const ICONS = {
-        openrouter: "route", anthropic: "psychology", openai: "auto_awesome", gemini: "diamond",
-        nvidia: "developer_board", deepseek: "explore", groq: "speed", ollama: "dns", github_copilot: "code"
-    };
-    for (const p of _ob.providers) {
-        const card = document.createElement("div");
-        card.className = "provider-card" + (p.name === _ob.currentProvider ? " selected" : "");
-        card.dataset.name = p.name;
-        let badge = "";
-        if (p.status === "env_detected") badge = '<span class="ob-badge env">ENV</span>';
-        else if (p.status === "configured") badge = '<span class="ob-badge configured">Configured</span>';
-        else if (p.status === "oauth_ok") badge = '<span class="ob-badge oauth">OAuth \u2713</span>';
-        else if (p.is_local) badge = '<span class="ob-badge local">Local</span>';
-        // Remove the default OAuth badge that was shown even when not authenticated
-        const icon = ICONS[p.name] || "smart_toy";
-        card.innerHTML = `
-            <div class="pc-icon"><span class="material-icons-round">${icon}</span></div>
-            <div class="pc-info">
-                <div class="pc-name">${p.label}${badge}</div>
-                <div class="pc-note">${p.env_key ? 'env: ' + p.env_key : (p.is_local ? 'No key needed' : (p.is_oauth ? 'OAuth login' : ''))}</div>
-            </div>`;
-        card.addEventListener("click", () => {
-            grid.querySelectorAll(".provider-card").forEach(c => c.classList.remove("selected"));
-            card.classList.add("selected");
-            _ob.provider = p;
-        });
-        if (p.name === _ob.currentProvider) _ob.provider = p;
-        grid.appendChild(card);
-    }
-}
-
-function _obShowStep(n) {
-    _ob.step = n;
-    for (let i = 1; i <= 4; i++) {
-        const panel = document.getElementById("ob-step-" + i);
-        if (panel) panel.style.display = i === n ? "" : "none";
-        const dot = document.querySelector(`.ob-step[data-step="${i}"]`);
-        if (dot) {
-            dot.classList.toggle("active", i === n);
-            dot.classList.toggle("done", i < n);
-        }
-    }
-    document.getElementById("ob-btn-back").style.display = n > 1 ? "" : "none";
-    document.getElementById("ob-btn-next").style.display = n < 4 ? "" : "none";
-    document.getElementById("ob-btn-finish").style.display = n === 4 ? "" : "none";
-
-    if (n === 2) _obSetupStep2();
-    if (n === 3) _obSetupStep3();
-    if (n === 4) _obSetupStep4();
-}
-
-function _obNormalizeModelValue(providerName, modelId) {
-    const raw = (modelId || "").trim();
-    if (!raw || !providerName) return raw;
-    const prefix = `${providerName}/`;
-    return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
-}
-
-function _obSetupStep2() {
-    const p = _ob.provider;
-    _clearOAuthPollsByPrefix("onboard:");
-    if (!p) return;
-    const keySection = document.getElementById("ob-key-section");
-    const oauthSection = document.getElementById("ob-oauth-section");
-    const localSection = document.getElementById("ob-local-section");
-    keySection.style.display = "none";
-    oauthSection.style.display = "none";
-    localSection.style.display = "none";
-
-    if (p.is_local) {
-        localSection.style.display = "";
-    } else if (p.is_oauth || p.name === "openrouter") {
-        oauthSection.style.display = "";
-        if (p.name === "openrouter") {
-            keySection.style.display = "";
-            document.getElementById("ob-key-title").textContent = p.label + " \u2014 API Key or OAuth";
-            document.getElementById("ob-key-hint").textContent = "You can enter your API key below, or use the browser OAuth login.";
-            if (p.status === "env_detected" || p.status === "configured") {
-                document.getElementById("ob-api-key").placeholder = "Leave blank to keep current key";
-            } else {
-                document.getElementById("ob-api-key").value = "";
-                document.getElementById("ob-api-key").placeholder = providerKeyPlaceholder(p.name);
-            }
-        } else {
-            document.getElementById("ob-key-title").textContent = p.label + " \u2014 OAuth";
-        }
-
-        const btn = document.getElementById("ob-oauth-btn");
-        const statusEl = document.getElementById("ob-oauth-status");
-        if (p.status === "oauth_ok") {
-            statusEl.innerHTML = '<span style="color:#4ade80"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">check_circle</span> Already authenticated</span>';
-        } else {
-            statusEl.innerHTML = "";
-            btn.style.width = "";
-            btn.innerHTML = p.name === "openrouter" ? '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">route</span> Login with OpenRouter' : '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">lock_open</span> Start OAuth Setup';
-            btn.onclick = async () => {
-                btn.style.width = btn.offsetWidth + "px";
-                btn.disabled = true;
-                btn.innerHTML = '<span class="material-icons-round spin" style="font-size:16px;vertical-align:middle">progress_activity</span> Starting...';
-                try {
-                    const resp = await authFetch("/api/oauth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: p.name }) });
-                    const jd = await resp.json();
-                    if (jd.auth_url) {
-                        try {
-                            const newWindow = window.open(jd.auth_url, '_blank', 'width=600,height=800');
-                            if (!newWindow) throw new Error("Popup blocked");
-                            statusEl.innerHTML = '<div style="text-align:center;margin-top:1rem">' +
-                                '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">OpenRouter will return here automatically when the authorization is complete.</div>' +
-                                '<span class="material-icons-round spin" style="font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...</div>';
-                        } catch (ex) {
-                            statusEl.innerHTML = `<div style="text-align:center;margin-top:1rem">` +
-                                `<a href="${jd.auth_url}" target="_blank" class="btn-primary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">` +
-                                `<span class="material-icons-round" style="font-size:16px">open_in_new</span> Click here if popup is blocked</a>` +
-                                `<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">` +
-                                `<span class="material-icons-round spin" style="font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...</div></div>`;
-                        }
-                    } else if (jd.user_code && jd.verification_uri) {
-                        statusEl.innerHTML = '<div style="text-align:center;margin-top:1rem">' +
-                            '<a href="' + jd.verification_uri + '" target="_blank" class="btn-primary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">' +
-                            '<span class="material-icons-round" style="font-size:16px">open_in_new</span> Open GitHub</a>' +
-                            '<div style="margin-top:10px;font-size:22px;letter-spacing:3px;font-weight:700;color:var(--shiba-gold);font-family:monospace;cursor:pointer" ' +
-                            'onclick="navigator.clipboard.writeText(\'' + jd.user_code + '\')" title="Click to copy">' + jd.user_code + '</div>' +
-                            '<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">' +
-                            '<span class="material-icons-round spin" style="font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...</div></div>';
-                    }
-                    if (jd.job_id) {
-                        const pollScope = "onboard:" + p.name;
-                        _startOAuthJobPoll(pollScope, jd.job_id, async (job) => {
-                            if (job.status === "done") {
-                                statusEl.innerHTML = '<span style="color:#4ade80"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">check_circle</span> Authenticated!</span>';
-                                btn.disabled = false;
-                                btn.innerHTML = '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">check</span> Done';
-                                if (p.name === "openrouter") {
-                                    document.getElementById("ob-api-key").value = "";
-                                    document.getElementById("ob-api-key").placeholder = "Authenticated via OAuth";
-                                }
-                                return true;
-                            }
-                            if (job.status === "error") {
-                                statusEl.innerHTML = '<span style="color:#f87171">Authentication failed</span>';
-                                btn.disabled = false;
-                                btn.innerHTML = p.name === "openrouter" ? '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">lock_open</span> Retry' : '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">lock_open</span> Retry';
-                                return true;
-                            }
-                            return false;
-                        });
-                    }
-                } catch (e) {
-                    statusEl.innerHTML = '<span style="color:#f87171">Error: ' + e + '</span>';
-                    btn.disabled = false;
-                    btn.innerHTML = p.name === "openrouter" ? '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">lock_open</span> Retry' : '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">lock_open</span> Retry';
-                }
-            };
-        }
-    } else {
-        keySection.style.display = "";
-        document.getElementById("ob-key-title").textContent = p.label + " \u2014 API Key";
-        document.getElementById("ob-key-hint").textContent = p.env_key ? "You can also set the " + p.env_key + " environment variable." : "";
-        if (p.status === "env_detected" || p.status === "configured") {
-            document.getElementById("ob-api-key").placeholder = "Leave blank to keep current key";
-        } else {
-            document.getElementById("ob-api-key").value = "";
-            document.getElementById("ob-api-key").placeholder = providerKeyPlaceholder(p.name);
-        }
-    }
-}
-
-function _obSetupStep3() {
-    const p = _ob.provider;
-    if (!p) return;
-    document.getElementById("ob-model-hint").textContent = "Provider: " + p.label + ". Check the provider docs for available models.";
-    const modelInput = document.getElementById("ob-model-input");
-    const currentModel = (_ob.currentProvider === p.name) ? _obNormalizeModelValue(p.name, _ob.currentModel) : "";
-    const defaultModel = p.name === "openrouter"
-        ? "google/gemma-4-31b-it:free"
-        : _obNormalizeModelValue(p.name, p.default_model);
-    if (!modelInput.value || _ob._lastModelProvider !== p.name) {
-        _ob._lastModelProvider = p.name;
-        modelInput.value = currentModel || defaultModel;
-    }
-
-    const wrapper = document.getElementById("ob-model-selector-wrapper");
-    const menu = document.getElementById("ob-model-dropdown-menu");
-    const list = document.getElementById("ob-model-list-container");
-
-    // Load models
-    ensureAvailableModels(list).then(() => {
-        _obRenderModelDropdown(modelInput.value);
-    });
-
-    if (wrapper._closeDropdownListener) {
-        document.removeEventListener("click", wrapper._closeDropdownListener);
-    }
-    const closeDropdown = (e) => {
-        if (!wrapper.contains(e.target)) {
-            menu.style.display = "none";
-        }
-    };
-    wrapper._closeDropdownListener = closeDropdown;
-    document.addEventListener("click", closeDropdown);
-
-    modelInput.onfocus = () => {
-        _obRenderModelDropdown(modelInput.value);
-        menu.style.display = "block";
-    };
-
-    modelInput.oninput = () => {
-        _obRenderModelDropdown(modelInput.value);
-        menu.style.display = "block";
-    };
-}
-
-function _obRenderModelDropdown(query) {
-    const p = _ob.provider;
-    if (!p) return;
-    const list = document.getElementById("ob-model-list-container");
-    if (!list) return;
-
-    let filtered = filterModelsByQuery(query);
-    filtered = filtered.filter(m => m.provider === p.name);
-
-    const currentModelId = _obNormalizeModelValue(p.name, document.getElementById("ob-model-input").value);
-    const onboardModels = filtered.map(m => ({
-        ...m,
-        id: _obNormalizeModelValue(p.name, m.raw_id || m.id),
-    }));
-
-    renderModelList(list, onboardModels, currentModelId, (m) => {
-        document.getElementById("ob-model-input").value = m.id;
-        document.getElementById("ob-model-dropdown-menu").style.display = "none";
-    });
-}
-
-function _obSetupStep4() {
-    const p = _ob.provider;
-    const modelValue = p
-        ? _obNormalizeModelValue(p.name, document.getElementById("ob-model-input").value)
-        : document.getElementById("ob-model-input").value;
-    document.getElementById("ob-sum-provider").textContent = p ? p.label : "\u2014";
-    document.getElementById("ob-sum-model").textContent = modelValue || "\u2014";
-
-    const tplSection = document.getElementById("ob-tpl-section");
-    const tplList = document.getElementById("ob-tpl-list");
-    if (_ob.templates.existing.length > 0) {
-        tplSection.style.display = "";
-        tplList.innerHTML = "";
-        for (const f of _ob.templates.existing) {
-            const item = document.createElement("label");
-            item.className = "ob-tpl-item";
-            const icon = f === "Tasks.md" ? "schedule_send" : "description";
-            item.innerHTML = '<input type="checkbox" value="' + f + '"> <span class="material-icons-round" style="font-size:16px;color:var(--text-muted)">' + icon + '</span> ' + f;
-            tplList.appendChild(item);
-        }
-    } else {
-        tplSection.style.display = "none";
-    }
-}
-
-window.obGoStep = function (dir) {
-    let next = _ob.step + dir;
-    if (next < 1) return;
-
-    if (_ob.step === 1 && dir > 0 && !_ob.provider) {
-        const grid = document.getElementById("ob-provider-grid");
-        grid.style.animation = "none"; grid.offsetHeight; grid.style.animation = "shake 0.3s";
-        return;
-    }
-
-    if (next === 2 && dir > 0 && _ob.provider && _ob.provider.is_local) {
-        next = 3;
-    }
-    if (next === 2 && dir < 0 && _ob.provider && _ob.provider.is_local) {
-        next = 1;
-    }
-
-    if (next > 4) return;
-    _obShowStep(next);
-};
-
-window.obSubmit = async function () {
-    const btn = document.getElementById("ob-btn-finish");
-    btn.style.width = btn.offsetWidth + "px";
-    btn.disabled = true;
-    btn.innerHTML = '<span class="material-icons-round spin" style="font-size:16px;vertical-align:middle">progress_activity</span> Saving...';
-    const modelValue = _ob.provider
-        ? _obNormalizeModelValue(_ob.provider.name, document.getElementById("ob-model-input").value)
-        : document.getElementById("ob-model-input").value.trim();
-
-    const overwrite = [];
-    document.querySelectorAll("#ob-tpl-list input:checked").forEach(cb => overwrite.push(cb.value));
-
-    try {
-        const res = await authFetch("/api/onboard/submit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                provider: _ob.provider.name,
-                api_key: document.getElementById("ob-api-key").value.trim(),
-                model: modelValue,
-                overwrite_templates: overwrite,
-            })
-        });
-        const data = await res.json();
-        if (!res.ok) throw data.error || "Setup failed";
-
-        btn.style.width = "";
-        closeModal("onboard-modal");
-        state.onboardModalShown = false;
-        _availableModels = []; // Clear model cache to force refresh
-        _hasFetchedModels = false;
-        fetchStatus();
-        loadHistory();
-    } catch (e) {
-        btn.style.width = "";
-        btn.disabled = false;
-        btn.innerHTML = '<span class="material-icons-round" style="font-size:16px;vertical-align:middle">check</span> Finish Setup';
-        await shibaDialog("alert", "Error", "Setup failed: " + e, { danger: true });
-    }
-};
-
-
 /* ── Model Selector (Chat Window) ────────────────────────────────── */
-let _availableModels = [];
-let _fetchingModelsPromise = null;
-let _hasFetchedModels = false;
-const SETTINGS_MODEL_PICKERS = [
-    {
-        valueId: "s-agent-model",
-        buttonId: "s-agent-model-button",
-        displayId: "s-agent-model-display",
-        providerId: "s-agent-model-provider",
-        menuId: "s-agent-model-menu",
-        searchId: "s-agent-model-search",
-        listId: "s-agent-model-list",
-        emptyLabel: "Select a default model",
-        emptyProvider: "New sessions",
-        emptyChoiceLabel: null,
-        emptyChoiceProvider: null,
-        allowEmpty: false,
-    },
-    {
-        valueId: "s-agent-consolidationModel",
-        buttonId: "s-agent-consolidationModel-button",
-        displayId: "s-agent-consolidationModel-display",
-        providerId: "s-agent-consolidationModel-provider",
-        menuId: "s-agent-consolidationModel-menu",
-        searchId: "s-agent-consolidationModel-search",
-        listId: "s-agent-consolidationModel-list",
-        emptyLabel: "Same as default session model",
-        emptyProvider: "Inherits",
-        emptyChoiceLabel: "Same as default session model",
-        emptyChoiceProvider: "Inherits",
-        allowEmpty: true,
-    },
-    {
-        valueId: "s-hb-model",
-        buttonId: "s-hb-model-button",
-        displayId: "s-hb-model-display",
-        providerId: "s-hb-model-provider",
-        menuId: "s-hb-model-menu",
-        searchId: "s-hb-model-search",
-        listId: "s-hb-model-list",
-        emptyLabel: "Same as default model",
-        emptyProvider: "Inherits",
-        emptyChoiceLabel: "Same as default model",
-        emptyChoiceProvider: "Inherits",
-        allowEmpty: true,
-    },
-];
-let _settingsModelPickersInitialized = false;
-
-async function fetchModels() {
-    try {
-        const res = await authFetch("/api/models");
-        const data = await res.json();
-        if (!res.ok) {
-            throw new Error(data.error || "Failed to fetch models");
-        }
-        if (Array.isArray(data.errors) && data.errors.length) {
-            console.warn("Some providers failed to return models", data.errors);
-        }
-        return data.models || [];
-    } catch (e) {
-        console.error("Failed to fetch models", e);
-        return [];
-    }
-}
-
-async function ensureAvailableModels(listEl = null) {
-    if (_availableModels.length || _hasFetchedModels) {
-        return _availableModels;
-    }
-    if (_fetchingModelsPromise) {
-        return _fetchingModelsPromise;
-    }
-    if (listEl) {
-        listEl.innerHTML = '<div style="padding: 10px; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">Loading models...</div>';
-    }
-    _fetchingModelsPromise = fetchModels().then(models => {
-        _availableModels = models || [];
-        _hasFetchedModels = true;
-        _fetchingModelsPromise = null;
-        return _availableModels;
-    }).catch(err => {
-        _hasFetchedModels = true;
-        _fetchingModelsPromise = null;
-        return [];
-    });
-    return _fetchingModelsPromise;
-}
-
-function filterModelsByQuery(query) {
-    const q = (query || "").trim().toLowerCase();
-    if (!q) {
-        return _availableModels.slice();
-    }
-    return _availableModels.filter(m =>
-        (m.name || "").toLowerCase().includes(q)
-        || (m.raw_id || m.id || "").toLowerCase().includes(q)
-        || (m.provider_label || "").toLowerCase().includes(q)
-        || (m.provider || "").toLowerCase().includes(q)
-    );
-}
-
-function findAvailableModel(modelId) {
-    if (!modelId) {
-        return null;
-    }
-    return _availableModels.find(m => m.id === modelId || m.raw_id === modelId) || null;
-}
-
-function createModelListItem(model, currentModelId, onSelect) {
-    const item = document.createElement("div");
-    item.className = "model-item" + (model.id === currentModelId ? " selected" : "");
-
-    const nameEl = document.createElement("span");
-    nameEl.className = "model-item-name";
-    nameEl.textContent = model.name || model.raw_id || model.id || "";
-
-    const providerEl = document.createElement("span");
-    providerEl.className = "model-item-provider";
-    providerEl.textContent = model.provider_label || model.provider || "";
-
-    item.appendChild(nameEl);
-    item.appendChild(providerEl);
-    item.title = [model.raw_id || model.id || "", model.provider_label || model.provider || ""].filter(Boolean).join(" • ");
-    item.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onSelect(model);
-    });
-    return item;
-}
-
-function renderModelList(list, models, currentModelId, onSelect, extraItems = []) {
-    list.innerHTML = "";
-    const allItems = [...extraItems, ...models];
-    if (!allItems.length) {
-        list.innerHTML = '<div style="padding: 10px; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">No models found</div>';
-        return;
-    }
-    allItems.forEach(model => list.appendChild(createModelListItem(model, currentModelId, onSelect)));
-}
-
-async function updateModelSelectorDisplay(modelId) {
-    const display = document.getElementById("active-model-display");
-    if (!display) return;
-    let resolvedModelId = modelId;
-    if (!resolvedModelId) {
-        try {
-            const cfgRes = await authFetch("/api/settings");
-            const cfg = await cfgRes.json();
-            resolvedModelId = cfg.agents?.defaults?.model || "";
-        } catch (e) { }
-    }
-
-    state.activeModelId = resolvedModelId || "";
-
-    await ensureAvailableModels();
-    const match = findAvailableModel(resolvedModelId);
-    display.textContent = match ? (match.name || match.raw_id || match.id) : (resolvedModelId || "Default");
-}
-
-function closeSettingsModelMenus(exceptMenu = null) {
-    SETTINGS_MODEL_PICKERS.forEach(cfg => {
-        const menu = document.getElementById(cfg.menuId);
-        if (menu && menu !== exceptMenu) {
-            menu.style.display = "none";
-        }
-    });
-}
-
-async function updateSettingsModelPickerDisplay(config) {
-    const input = document.getElementById(config.valueId);
-    const display = document.getElementById(config.displayId);
-    const provider = document.getElementById(config.providerId);
-    if (!input || !display || !provider) {
-        return;
-    }
-
-    const value = input.value.trim();
-    if (!value && config.allowEmpty) {
-        display.textContent = config.emptyLabel;
-        provider.textContent = config.emptyProvider;
-        provider.classList.add("settings-model-button-provider-placeholder");
-        return;
-    }
-    if (!value) {
-        display.textContent = config.emptyLabel;
-        provider.textContent = config.emptyProvider;
-        provider.classList.add("settings-model-button-provider-placeholder");
-        return;
-    }
-
-    await ensureAvailableModels();
-    const match = findAvailableModel(value);
-    display.textContent = match ? (match.name || match.raw_id || match.id) : value;
-    provider.textContent = match ? (match.provider_label || match.provider || "") : "Custom";
-    provider.classList.toggle("settings-model-button-provider-placeholder", !match);
-}
-
-async function refreshSettingsModelPickers() {
-    for (const config of SETTINGS_MODEL_PICKERS) {
-        await updateSettingsModelPickerDisplay(config);
-    }
-}
-
-function renderSettingsModelPickerOptions(config) {
-    const list = document.getElementById(config.listId);
-    const search = document.getElementById(config.searchId);
-    const input = document.getElementById(config.valueId);
-    if (!list || !search || !input) {
-        return;
-    }
-
-    const models = filterModelsByQuery(search.value);
-    const extraItems = [];
-    if (config.allowEmpty) {
-        extraItems.push({
-            id: "",
-            raw_id: "",
-            name: config.emptyChoiceLabel,
-            provider_label: config.emptyChoiceProvider,
-            provider: "",
-        });
-    }
-
-    renderModelList(
-        list,
-        models,
-        input.value.trim(),
-        (model) => {
-            input.value = model.id || "";
-            void updateSettingsModelPickerDisplay(config);
-            const menu = document.getElementById(config.menuId);
-            if (menu) {
-                menu.style.display = "none";
-            }
-        },
-        extraItems,
-    );
-}
-
-function setupSettingsModelPickers() {
-    if (_settingsModelPickersInitialized) {
-        return;
-    }
-
-    SETTINGS_MODEL_PICKERS.forEach(config => {
-        const button = document.getElementById(config.buttonId);
-        const menu = document.getElementById(config.menuId);
-        const search = document.getElementById(config.searchId);
-        const list = document.getElementById(config.listId);
-        if (!button || !menu || !search || !list) {
-            return;
-        }
-
-        button.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            const isOpen = menu.style.display === "flex";
-            if (isOpen) {
-                menu.style.display = "none";
-                return;
-            }
-
-            closeSettingsModelMenus(menu);
-            menu.style.display = "flex";
-            await ensureAvailableModels(list);
-            search.value = "";
-            renderSettingsModelPickerOptions(config);
-            search.focus();
-        });
-
-        menu.addEventListener("click", (e) => e.stopPropagation());
-        search.addEventListener("input", () => renderSettingsModelPickerOptions(config));
-    });
-
-    document.addEventListener("click", () => closeSettingsModelMenus());
-    _settingsModelPickersInitialized = true;
-}
-
-function setupModelSelector() {
-    const btn = document.getElementById("btn-model-select");
-    const menu = document.getElementById("model-dropdown-menu");
-    const search = document.getElementById("model-search-input");
-    const list = document.getElementById("model-list-container");
-    if (!btn || !menu) return;
-
-    btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const isHidden = menu.style.display === "none";
-        if (isHidden) {
-            menu.style.display = "flex";
-            await ensureAvailableModels(list);
-            renderModels(_availableModels);
-            search.value = "";
-            search.focus();
-        } else {
-            menu.style.display = "none";
-        }
-    });
-
-    document.addEventListener("click", (e) => {
-        if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
-            menu.style.display = "none";
-        }
-    });
-
-    search.addEventListener("input", () => {
-        const filtered = filterModelsByQuery(search.value);
-        renderModels(filtered);
-    });
-
-    function renderModels(models) {
-        const currentModelId = state.activeModelId || "";
-        renderModelList(list, models, currentModelId, async (model) => {
-            state.activeModelId = model.id;
-            updateModelSelectorDisplay(model.id);
-            menu.style.display = "none";
-            if (state.sessionId) {
-                await authFetch("/api/sessions/" + encodeURIComponent(state.sessionId), {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ model: model.id })
-                });
-            }
-        });
-    }
-}
-document.addEventListener("DOMContentLoaded", () => {
-    setupSettingsModelPickers();
-    setTimeout(setupModelSelector, 500);
-});
-
 /* ── Heartbeat panel ── */
 async function loadHeartbeatSettingsPanel() {
     const profileSelect = $("s-hb-profile");
@@ -3308,179 +1010,3 @@ async function loadHeartbeatSettingsPanel() {
         console.error("loadHeartbeatSettingsPanel profiles fetch failed", e);
     }
 }
-
-window.loadPluginsPanel = async function () {
-    const installedList = document.getElementById("installed-plugins-list");
-    const availableList = document.getElementById("available-plugins-list");
-    if (!installedList || !availableList) return;
-
-    installedList.innerHTML = `<div class="settings-loader"><span class="material-icons-round spin">progress_activity</span> Loading plugins...</div>`;
-    availableList.innerHTML = "";
-
-    try {
-        const res = await authFetch("/api/plugins");
-        const data = await res.json();
-        
-        installedList.innerHTML = "";
-        availableList.innerHTML = "";
-
-        if (data.plugins && data.plugins.length > 0) {
-            data.plugins.forEach(p => {
-                const card = document.createElement("div");
-                card.className = "skill-card";
-                card.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--border-color); border-radius:8px; margin-bottom:8px; background:var(--bg-secondary)";
-                card.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:10px">
-                        <span class="material-icons-round" style="color:var(--shiba-gold)">${p.type === 'tts' ? 'volume_up' : 'forum'}</span>
-                        <div>
-                            <div style="font-weight:600; font-size:0.9rem">${escapeHtml(p.display_name)}</div>
-                            <div style="font-size:0.75rem; color:var(--text-muted)">${escapeHtml(p.name)} (${escapeHtml(p.type)})</div>
-                        </div>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px">
-                        <span class="acc-badge ${p.enabled ? 'on' : 'off'}">${p.enabled ? 'Enabled' : 'Disabled'}</span>
-                        ${(() => {
-                            const pkgName = p.type === 'tts' ? `shibaclaw-tts-${p.name}` : `shibaclaw-channel-${p.name}`;
-                            return `<button class="btn-icon" onclick="uninstallPlugin('${pkgName}')" title="Uninstall" style="background:transparent; border:none; cursor:pointer">
-                                <span class="material-icons-round" style="color:var(--accent-red); font-size:18px">delete</span>
-                            </button>`;
-                        })()}
-                    </div>
-                `;
-                installedList.appendChild(card);
-            });
-        } else {
-            installedList.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem">No external plugins installed.</div>`;
-        }
-
-        if (data.available && data.available.length > 0) {
-            data.available.forEach(p => {
-                const card = document.createElement("div");
-                card.className = "skill-card";
-                card.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--border-color); border-radius:8px; margin-bottom:8px; background:var(--bg-secondary)";
-                card.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0">
-                        <span class="material-icons-round" style="color:var(--text-muted)">cloud_download</span>
-                        <div style="min-width:0; flex:1">
-                            <div style="font-weight:600; font-size:0.9rem">${escapeHtml(p.display_name)}</div>
-                            <div style="font-size:0.8rem; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(p.description)}</div>
-                        </div>
-                    </div>
-                    <button class="btn-primary btn-sm" onclick="installPlugin('${escapeHtml(p.name)}')" style="white-space:nowrap; margin-left:12px">
-                        <span class="material-icons-round" style="font-size:14px; vertical-align:middle">download</span> Install
-                    </button>
-                `;
-                availableList.appendChild(card);
-            });
-        } else {
-            availableList.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem">No available plugins to show.</div>`;
-        }
-    } catch (e) {
-        installedList.innerHTML = `<div style="color:var(--accent-red); font-size:0.85rem">Error loading plugins list: ${escapeHtml(e.message || e)}</div>`;
-    }
-};
-
-window.installPlugin = async function (explicitName) {
-    const input = document.getElementById("plugin-install-name");
-    const name = (explicitName || (input ? input.value : "")).trim();
-    if (!name) return;
-
-    const logEl = document.getElementById("plugin-action-log");
-    if (logEl) {
-        logEl.style.display = "block";
-        logEl.textContent = `Installing ${name}... please wait.\nThis runs pip install and will automatically restart the server.`;
-    }
-
-    try {
-        const res = await authFetch("/api/plugins/install", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ package: name })
-        });
-        const data = await res.json();
-        
-        if (!res.ok) {
-            if (logEl) logEl.textContent = `Error: ${data.error || "Installation failed"}\n\n${data.stdout || ""}`;
-            return;
-        }
-
-        if (logEl) logEl.textContent = `${data.stdout || "Success!"}\n\nPlugin installed! Restarting server to apply changes...`;
-        if (input) input.value = "";
-        
-        await pollForServerRestart();
-    } catch (e) {
-        if (logEl) logEl.textContent = `Error: ${e.message || e}`;
-    }
-};
-
-window.uninstallPlugin = async function (name) {
-    const confirmed = await shibaDialog("confirm", "Uninstall Plugin", `Are you sure you want to uninstall ${name}?`, { confirmText: "Uninstall", danger: true });
-    if (!confirmed) return;
-
-    const logEl = document.getElementById("plugin-action-log");
-    if (logEl) {
-        logEl.style.display = "block";
-        logEl.textContent = `Uninstalling ${name}... please wait.\nThis will automatically restart the server.`;
-    }
-
-    try {
-        const res = await authFetch("/api/plugins/uninstall", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ package: name })
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-            if (logEl) logEl.textContent = `Error: ${data.error || "Uninstallation failed"}\n\n${data.stdout || ""}`;
-            return;
-        }
-
-        if (logEl) logEl.textContent = `${data.stdout || "Success!"}\n\nPlugin uninstalled! Restarting server to apply...`;
-        
-        await pollForServerRestart();
-    } catch (e) {
-        if (logEl) logEl.textContent = `Error: ${e.message || e}`;
-    }
-};
-
-async function pollForServerRestart() {
-    let tries = 0;
-    const interval = setInterval(async () => {
-        tries++;
-        try {
-            const h = await authFetch("/api/status?_t=" + Date.now());
-            if (h.ok) {
-                const data = await h.json();
-                if (data.status === "ok") {
-                    clearInterval(interval);
-                    window.location.reload();
-                    return;
-                }
-            }
-        } catch (e) { }
-        if (tries > 20) {
-            clearInterval(interval);
-            alert("Server took too long to restart. Please reload manually.");
-        }
-    }, 2000);
-}
-
-window.updateTtsSettingsVisibility = function () {
-    const toggle = document.getElementById("tts-toggle");
-    const provSelect = document.getElementById("s-audio-ttsProvider");
-    const voiceRow = document.getElementById("tts-voice-row");
-    const langRow = document.getElementById("tts-lang-row");
-    const speedRow = document.getElementById("tts-speed-row");
-    const provRow = document.getElementById("tts-provider-row");
-
-    if (!toggle || !provSelect) return;
-    const checked = toggle.checked;
-    const provider = provSelect.value;
-
-    const showSupertonic = (checked && provider === "supertonic");
-    if (provRow) provRow.style.display = checked ? "flex" : "none";
-    if (voiceRow) voiceRow.style.display = showSupertonic ? "flex" : "none";
-    if (langRow) langRow.style.display = showSupertonic ? "flex" : "none";
-    if (speedRow) speedRow.style.display = showSupertonic ? "flex" : "none";
-};

@@ -1045,8 +1045,8 @@ async def gateway_command(
                     try:
                         await agent.memory_consolidator.archive_snapshot(snapshot)
                         archived = True
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("Ignored error: {}", _e)
                 await ws.send(_ok({"archived": archived}))
 
             else:
@@ -1057,8 +1057,8 @@ async def gateway_command(
         except Exception as e:
             try:
                 await ws.send(_err(str(e)))
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
 
     async def _broadcast_ws_event(name: str, payload: dict, session_key: str | None = None):
         msg = json.dumps(
@@ -1419,8 +1419,8 @@ async def gateway_command(
                             try:
                                 await agent.memory_consolidator.archive_snapshot(snapshot)
                                 archived = True
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                logger.debug("Ignored error: {}", _e)
                         writer.write(_json_response({"archived": archived}))
 
                 elif "GET" in request_line:
@@ -1438,8 +1438,8 @@ async def gateway_command(
                 else:
                     writer.write(_json_response({"error": "not found"}, 404))
                 await writer.drain()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
             finally:
                 writer.close()
 

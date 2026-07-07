@@ -12,41 +12,7 @@
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-function _autoTimeAgo(ms) {
-    if (!ms) return '';
-    const sec = Math.floor((Date.now() - ms) / 1000);
-    if (sec < 60) return 'just now';
-    if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
-    if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
-    return `${Math.floor(sec / 86400)}d ago`;
-}
-
-function _autoFormatSchedule(s) {
-    if (!s) return '?';
-    if (s.kind === 'cron') return `cron: ${s.expr || s.expression || ''}`;
-    if (s.kind === 'every') {
-        const ms = s.everyMs || s.every_ms || 0;
-        if (ms % 3600000 === 0) return `every ${ms / 3600000}h`;
-        if (ms % 60000 === 0) return `every ${ms / 60000}m`;
-        if (ms % 1000 === 0) return `every ${ms / 1000}s`;
-        return `every ${ms}ms`;
-    }
-    if (s.kind === 'at') {
-        const atMs = s.atMs || s.at_ms || 0;
-        return atMs ? new Date(atMs).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'once';
-    }
-    return s.kind || '?';
-}
-
-function _autoStatusClass(job) {
-    if (!job.enabled) return 'st-disabled';
-    const st = (job.state || {}).lastStatus || (job.state || {}).last_status;
-    if (st === 'error') return 'st-error';
-    if (st === 'ok') return 'st-ok';
-    return 'st-pending';
-}
-
-// ── state ────────────────────────────────────────────────────────────────────
+// ── helpers (uses global timeAgo, formatSchedule, jobStatusClass from utils.js) ──
 
 let _autoJobs = [];
 let _autoEditingId = null;
@@ -201,10 +167,10 @@ async function loadAutomationPanel() {
             }
             row.className = rowClass;
 
-            const stCls = _autoStatusClass(job);
+            const stCls = jobStatusClass(job);
             const state = job.state || {};
             const lastRun = state.lastRunAtMs || state.last_run_at_ms;
-            const meta = lastRun ? _autoTimeAgo(lastRun) : _autoFormatSchedule(job.schedule);
+            const meta = lastRun ? timeAgo(lastRun) : formatSchedule(job.schedule);
             const isHeartbeat = (job.payload || {}).kind === 'heartbeat';
             const kindIcon = isHeartbeat ? 'autorenew' : 'schedule_send';
             const kindLabel = isHeartbeat ? 'Heartbeat' : 'Scheduled';

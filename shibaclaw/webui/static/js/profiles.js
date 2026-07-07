@@ -119,11 +119,7 @@ async function renderProfileDropdown() {
     if (createBtn) createBtn.addEventListener("click", () => startProfileCreationSession());
 }
 
-function escapeHtml(text) {
-    const d = document.createElement("div");
-    d.textContent = text;
-    return d.innerHTML;
-}
+// escapeHtml — uses global from utils.js (loaded before profiles.js)
 
 // ── Toggle dropdown ──────────────────────────────────────────
 if (profileBtn) {

@@ -103,8 +103,8 @@ def _graceful_shutdown_server() -> None:
             os.kill(os.getpid(), signal.CTRL_C_EVENT)
         else:
             os.kill(os.getpid(), signal.SIGINT)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored error: {}", _e)
 
 
 def _exec_restart() -> None:
@@ -121,8 +121,8 @@ def _exec_restart() -> None:
                 argv,
                 creationflags=creationflags
             )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored error: {}", _e)
         os._exit(0)
 
 
@@ -193,8 +193,8 @@ async def api_update_apply(request: Request):
                 for ws in list(_ws_clients.values()):
                     try:
                         await ws.send_text(raw)
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("Ignored error: {}", _e)
                         
             asyncio.run_coroutine_threadsafe(_send(), loop)
 
@@ -220,8 +220,8 @@ async def api_update_apply(request: Request):
                 if _shutdown_callback is not None:
                     try:
                         _shutdown_callback()
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("Ignored error: {}", _e)
                 os._exit(0)
             elif _restart_callback is not None:
                 _restart_callback()
@@ -229,8 +229,8 @@ async def api_update_apply(request: Request):
                 if _shutdown_callback is not None:
                     try:
                         _shutdown_callback()
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("Ignored error: {}", _e)
                 _schedule_restart_outside_loop(delay=2.0)
                 _graceful_shutdown_server()
 

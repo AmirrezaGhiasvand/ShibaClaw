@@ -430,8 +430,8 @@ class ShibaBrain:
         try:
             from shibaclaw.agent.tools.mcp import clear_mcp_sessions
             clear_mcp_sessions()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored error: {}", _e)
 
         self._mcp_connected = False
 
@@ -1028,8 +1028,8 @@ class ShibaBrain:
                     for p in raw_media
                 ]
                 final_content = final_content.replace(media_match.group(0), "").strip()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
 
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.debug("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
@@ -1063,8 +1063,8 @@ class ShibaBrain:
                                         for p in args["media"]
                                     ]
                                     tc["function"]["arguments"] = json.dumps(args, ensure_ascii=False)
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                logger.debug("Ignored error: {}", _e)
 
             if role == "assistant" and isinstance(content, str):
                 media_match = _MEDIA_RE.search(content)
@@ -1074,8 +1074,8 @@ class ShibaBrain:
                         entry.setdefault("metadata", {})["media"] = media_json.get("media", [])
                         entry["content"] = content.replace(media_match.group(0), "").strip()
                         content = entry["content"]
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("Ignored error: {}", _e)
 
             if (
                 role == "tool"
