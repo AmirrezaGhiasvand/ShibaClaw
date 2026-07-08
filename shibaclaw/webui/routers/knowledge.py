@@ -13,14 +13,16 @@ def _get_km() -> KnowledgeManager:
     return KnowledgeManager(agent_manager.config.workspace_path)
 
 async def api_knowledge_list(request: Request):
+    """List all available knowledge base collections."""
     try:
         km = _get_km()
         collections = km.list_collections()
         return JSONResponse({"collections": collections})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 async def api_knowledge_create(request: Request):
+    """Create a new knowledge base collection."""
     data = await request.json()
     col_id = data.get("id")
     name = data.get("name")
@@ -33,19 +35,25 @@ async def api_knowledge_create(request: Request):
     try:
         col = km.create_collection(col_id, name, description)
         return JSONResponse(col, status_code=201)
-    except Exception as e:
+    except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 async def api_knowledge_delete(request: Request):
+    """Delete an existing knowledge base collection."""
     collection_id = request.path_params["collection_id"]
     try:
         km = _get_km()
         km.delete_collection(collection_id)
         return JSONResponse({"status": "deleted"})
-    except Exception as e:
+    except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 async def api_knowledge_upload(request: Request):
+    """Upload a file to a specific knowledge base collection."""
     collection_id = request.path_params["collection_id"]
     form = await request.form()
     file_item = form.get("file")
@@ -58,14 +66,16 @@ async def api_knowledge_upload(request: Request):
         temp_dir.mkdir(parents=True, exist_ok=True)
         temp_path = temp_dir / file_item.filename
         
-        content = await file_item.read()
         with open(temp_path, "wb") as buffer:
-            buffer.write(content)
+            while chunk := await file_item.read(8192):
+                buffer.write(chunk)
             
         km.add_document(collection_id, temp_path, file_item.filename)
         return JSONResponse({"status": "uploaded", "filename": file_item.filename})
-    except Exception as e:
+    except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
     finally:
         if 'temp_path' in locals() and temp_path.exists():
             try:
