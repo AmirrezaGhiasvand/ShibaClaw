@@ -3,9 +3,15 @@ import logging
 import os
 import shutil
 import re
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Suppress Hugging Face Hub unauthenticated request warnings and disable progress bars
+warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HUGGINGFACE_HUB_VERBOSITY"] = "error"
 
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
@@ -66,6 +72,21 @@ class KnowledgeManager:
         coll_dir.mkdir(parents=True)
         meta = {"id": collection_id, "name": name, "description": description, "files": []}
         with open(coll_dir / "meta.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        return meta
+
+    def update_collection(self, collection_id: str, name: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
+        coll_dir = self._get_collection_dir(collection_id)
+        if not coll_dir.exists():
+            raise ValueError(f"Collection {collection_id} does not exist")
+        meta_file = coll_dir / "meta.json"
+        with open(meta_file, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        if name is not None:
+            meta["name"] = name
+        if description is not None:
+            meta["description"] = description
+        with open(meta_file, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
         return meta
 

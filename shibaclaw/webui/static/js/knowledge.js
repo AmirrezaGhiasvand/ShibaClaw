@@ -79,9 +79,12 @@ function renderKBManagerList() {
                     <span style="font-size: 13px; color: var(--text-muted);">${kb.files ? kb.files.length : 0} file(s) loaded</span>
                 </div>
                 <div style="display:flex; gap: 10px; align-items: center; position:relative; z-index:10;">
-                    <input type="file" id="upload-${kb.id}" style="display:none" onchange="uploadToKB('${kb.id}', this)">
+                    <input type="file" id="upload-${kb.id}" multiple style="display:none" onchange="uploadToKB('${kb.id}', this)">
                     <button class="btn-secondary" id="btn-upload-${kb.id}" style="display:flex; align-items:center; gap:6px; padding:6px 12px; font-size: 13px;" onclick="document.getElementById('upload-${kb.id}').click()" title="Upload file">
                         <span class="material-icons-round" style="font-size: 16px;">upload_file</span> Upload Docs
+                    </button>
+                    <button class="btn-icon" id="edit-btn-${kb.id}" onclick="renameKB('${kb.id}', '${kb.name.replace(/'/g, "\\'")}')" title="Rename Collection">
+                        <span class="material-icons-round" style="color: var(--text-primary);">edit</span>
                     </button>
                     <button class="btn-icon" id="del-btn-${kb.id}" onclick="deleteKB('${kb.id}')" title="Delete Collection">
                         <span class="material-icons-round" style="color: var(--danger);">delete</span>
@@ -97,8 +100,7 @@ function renderKBManagerList() {
 
 async function handleKBDrop(e, kbId) {
     if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
-    const file = e.dataTransfer.files[0];
-    await uploadToKB(kbId, null, file);
+    await uploadToKB(kbId, null, e.dataTransfer.files);
 }
 
 async function createKB() {
@@ -167,53 +169,83 @@ async function deleteKB(id) {
     }
 }
 
-async function uploadToKB(id, inputElem, droppedFile = null) {
-    const file = droppedFile || (inputElem && inputElem.files ? inputElem.files[0] : null);
-    if (!file) return;
+async function renameKB(id, currentName) {
+    const newName = await shibaDialog("prompt", "Rename Collection", "Enter new name for collection:", { defaultValue: currentName, confirmText: "Rename" });
+    if (!newName || newName.trim() === "" || newName === currentName) return;
     
-    const formData = new FormData();
-    formData.append('file', file);
+    const btn = document.getElementById(`edit-btn-${id}`);
+    const oldHtml = btn ? btn.innerHTML : '';
+    if (btn) btn.innerHTML = `<span class="material-icons-round spin" style="color: var(--text-primary);">sync</span>`;
+    
+    try {
+        const res = await authFetch(`/api/knowledge/${id}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: newName.trim()})
+        });
+        if (res.ok) {
+            showKBFeedback("Collection renamed successfully.");
+            await loadKnowledgeBases();
+        } else {
+            const err = await res.json();
+            showKBFeedback(err.error || "Failed to rename collection", true);
+            if (btn) btn.innerHTML = oldHtml;
+        }
+    } catch(e) {
+        showKBFeedback("Error renaming collection", true);
+        if (btn) btn.innerHTML = oldHtml;
+    }
+}
+
+async function uploadToKB(id, inputElem, droppedFiles = null) {
+    const files = droppedFiles ? Array.from(droppedFiles) : (inputElem && inputElem.files ? Array.from(inputElem.files) : []);
+    if (files.length === 0) return;
     
     const btn = document.getElementById(`btn-upload-${id}`);
     const oldHtml = btn ? btn.innerHTML : '';
     if (btn) {
-        btn.innerHTML = `<span class="material-icons-round spin" style="font-size: 16px;">sync</span> Uploading...`;
+        btn.innerHTML = `<span class="material-icons-round spin" style="font-size: 16px;">sync</span> Uploading ${files.length} file(s)...`;
         btn.style.pointerEvents = "none";
     }
     
-    try {
-        const res = await authFetch(`/api/knowledge/${id}/upload`, {
-            method: 'POST',
-            body: formData
-        });
-        if (res.ok) {
-            await loadKnowledgeBases();
-            if (btn) {
-                btn.innerHTML = `<span class="material-icons-round" style="color:var(--success); font-size: 16px;">check_circle</span> Success!`;
-                btn.style.borderColor = "var(--success)";
-                setTimeout(() => {
-                    btn.innerHTML = oldHtml;
-                    btn.style.pointerEvents = "auto";
-                    btn.style.borderColor = "";
-                }, 2500);
+    let successCount = 0;
+    for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const res = await authFetch(`/api/knowledge/${id}/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            if (res.ok) {
+                successCount++;
+            } else {
+                const err = await res.json();
+                showKBFeedback(`Upload failed for ${file.name}: ` + (err.error || ""), true);
             }
-        } else {
-            const err = await res.json();
-            showKBFeedback("Upload failed: " + (err.error || ""), true);
-            if (btn) {
-                btn.innerHTML = oldHtml;
-                btn.style.pointerEvents = "auto";
-            }
+        } catch(e) {
+            showKBFeedback(`Upload error for ${file.name}`, true);
         }
-    } catch(e) {
-        showKBFeedback("Upload error", true);
-        if (btn) {
+    }
+
+    await loadKnowledgeBases();
+    if (btn) {
+        if (successCount === files.length) {
+            btn.innerHTML = `<span class="material-icons-round" style="color:var(--success); font-size: 16px;">check_circle</span> Success!`;
+            btn.style.borderColor = "var(--success)";
+        } else {
+            btn.innerHTML = `<span class="material-icons-round" style="color:var(--danger); font-size: 16px;">error</span> Partial/Failed`;
+            btn.style.borderColor = "var(--danger)";
+        }
+        setTimeout(() => {
             btn.innerHTML = oldHtml;
             btn.style.pointerEvents = "auto";
-        }
-    } finally {
-        if (inputElem) inputElem.value = "";
+            btn.style.borderColor = "";
+        }, 2500);
     }
+    
+    if (inputElem) inputElem.value = "";
 }
 
 function renderKBSelectorDropdown() {
@@ -223,9 +255,9 @@ function renderKBSelectorDropdown() {
     list.innerHTML = allKnowledgeBases.map(kb => {
         const isActive = activeSessionKBs.includes(kb.id);
         return `
-        <div class="model-item" onclick="toggleSessionKB('${kb.id}')" style="display:flex; justify-content:space-between; cursor:pointer;">
-            <span>${kb.name}</span>
-            ${isActive ? '<span class="material-icons-round" style="font-size:16px;">check</span>' : ''}
+        <div class="model-item ${isActive ? 'selected' : ''}" onclick="toggleSessionKB('${kb.id}', event)">
+            <span class="model-item-name">${kb.name}</span>
+            ${isActive ? '<span class="material-icons-round" style="font-size:18px; color: var(--shiba-gold);">check_circle</span>' : '<span class="material-icons-round" style="font-size:18px; color: var(--text-muted); opacity: 0.3;">radio_button_unchecked</span>'}
         </div>
         `;
     }).join('');
@@ -236,7 +268,10 @@ function renderKBSelectorDropdown() {
     }
 }
 
-async function toggleSessionKB(id) {
+async function toggleSessionKB(id, event) {
+    if (event) {
+        event.stopPropagation();
+    }
     if (activeSessionKBs.includes(id)) {
         activeSessionKBs = activeSessionKBs.filter(x => x !== id);
     } else {

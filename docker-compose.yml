@@ -10,10 +10,10 @@ x-common-config: &common-config
     resources:
       limits:
         cpus: "0.5"
-        memory: 256M
-      reservations:
-        cpus: "0.2"
         memory: 128M
+      reservations:
+        cpus: "0.1"
+        memory: 64M
   environment:
     <<: *common-env
   volumes:
@@ -31,11 +31,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 1536M
-        reservations:
           cpus: "0.5"
-          memory: 1024M
+          memory: 512M
+        reservations:
+          cpus: "0.2"
+          memory: 256M
     command: [ "shibaclaw", "gateway", "--host", "0.0.0.0" ]
     restart: unless-stopped
     ports:

@@ -506,6 +506,7 @@ class ShibaBrain:
         profile_id: str | None = None,
         model: str | None = None,
         session_key: str | None = None,
+        metadata: dict | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop.
 
@@ -543,11 +544,19 @@ class ShibaBrain:
                 if steer_msgs:
                     logger.info("Steering loop with {} new messages", len(steer_msgs))
                     for msg in steer_msgs:
+                        # Prefix the steering message so the LLM clearly understands it's an interruption
+                        steer_text = f"**[USER INJECTION DURING TASK]**\n\n{msg['content']}"
+                        
+                        # Properly construct content with media so the model can see the images
+                        content = self.context._build_user_content(steer_text, msg.get("media"))
+                        
                         entry = {
                             "role": "user",
-                            "content": msg["content"],
-                            "timestamp": msg.get("timestamp")
+                            "content": content,
                         }
+                        if msg.get("timestamp"):
+                            entry["timestamp"] = msg.get("timestamp")
+                            
                         metadata = {}
                         if msg.get("media"):
                             metadata["media"] = msg["media"]
@@ -555,6 +564,7 @@ class ShibaBrain:
                             metadata["attachments"] = msg["attachments"]
                         if metadata:
                             entry["metadata"] = metadata
+                            
                         messages.append(entry)
                     self._steering_queues[session_key] = []
             # Wall-clock safety: abort if the loop has been running too long
@@ -570,14 +580,29 @@ class ShibaBrain:
             iteration += 1
 
             active_kbs = None
-            if chat_id:
-                try:
+            try:
+                from shibaclaw.agent.knowledge_manager import KnowledgeManager
+                km = KnowledgeManager(self.context.workspace)
+                all_collections = km.list_collections()
+                
+                session_kb_ids = []
+                if chat_id:
                     from shibaclaw.webui.agent_manager import agent_manager
                     if agent_manager.pm:
                         sess = agent_manager.pm.get_or_create(chat_id)
-                        active_kbs = sess.metadata.get("knowledge_bases", [])
-                except Exception:
-                    pass
+                        session_kb_ids = sess.metadata.get("knowledge_bases", [])
+                
+                if all_collections and session_kb_ids:
+                    active_kbs = []
+                    for col in all_collections:
+                        col_id = col.get("id", "")
+                        if col_id in session_kb_ids:
+                            col_name = col.get("name", "")
+                            col_desc = col.get("description", "")
+                            desc_part = f" - Desc: {col_desc}" if col_desc else ""
+                            active_kbs.append(f"ID: {col_id} (Name: '{col_name}'){desc_part}")
+            except Exception:
+                pass
 
             live_block = self.context.build_runtime_block(
                 channel=channel,
@@ -586,6 +611,7 @@ class ShibaBrain:
                 max_iterations=self.max_iterations,
                 available_channels=self._available_channels,
                 active_kbs=active_kbs,
+                metadata=metadata,
             )
             messages[0] = {
                 "role": "system",
@@ -893,6 +919,7 @@ class ShibaBrain:
                 chat_id=chat_id,
                 profile_id=profile_id,
                 session_key=key,
+                metadata=msg.metadata,
             )
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)

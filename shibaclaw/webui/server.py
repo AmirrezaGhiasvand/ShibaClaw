@@ -82,6 +82,7 @@ from .routers.knowledge import (
     api_knowledge_list,
     api_knowledge_create,
     api_knowledge_delete,
+    api_knowledge_update,
     api_knowledge_upload,
 )
 from .auth import AuthMiddleware, _auth_enabled, get_auth_token, mask_token
@@ -207,6 +208,7 @@ def create_app(
         # ── Knowledge Base ───────────────────────────────────────────────────
         Route("/api/knowledge", api_knowledge_list, methods=["GET"]),
         Route("/api/knowledge", api_knowledge_create, methods=["POST"]),
+        Route("/api/knowledge/{collection_id}", api_knowledge_update, methods=["PATCH"]),
         Route("/api/knowledge/{collection_id}", api_knowledge_delete, methods=["DELETE"]),
         Route("/api/knowledge/{collection_id}/upload", api_knowledge_upload, methods=["POST"]),
         Route("/api/restart", api_restart_server, methods=["POST"]),

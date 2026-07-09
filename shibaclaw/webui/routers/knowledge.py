@@ -40,6 +40,21 @@ async def api_knowledge_create(request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+async def api_knowledge_update(request: Request):
+    """Update an existing knowledge base collection (e.g. rename)."""
+    collection_id = request.path_params["collection_id"]
+    try:
+        data = await request.json()
+        name = data.get("name")
+        description = data.get("description")
+        km = _get_km()
+        meta = km.update_collection(collection_id, name, description)
+        return JSONResponse(meta)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 async def api_knowledge_delete(request: Request):
     """Delete an existing knowledge base collection."""
     collection_id = request.path_params["collection_id"]

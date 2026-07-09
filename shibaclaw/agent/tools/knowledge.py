@@ -13,7 +13,7 @@ class KnowledgeSearchTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Search for information inside user-created Knowledge Bases (Collezioni) via semantic similarity."
+        return "CRITICAL: You MUST use this tool FIRST if the user's question can be answered by the Active Knowledge Bases in your system prompt. Search for information inside user-created Knowledge Bases (Collezioni) via semantic similarity before using web_search."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -45,7 +45,21 @@ class KnowledgeSearchTool(Tool):
                 agent_manager.load_latest_config()
                 
             km = KnowledgeManager(agent_manager.config.workspace_path)
-            docs = km.search(collection_ids, query, k=5)
+            
+            # Resolve names to IDs if the agent passed names instead of IDs
+            all_cols = km.list_collections()
+            name_to_id = {c.get("name", "").lower(): c["id"] for c in all_cols}
+            
+            resolved_ids = []
+            for cid in collection_ids:
+                if any(c["id"] == cid for c in all_cols):
+                    resolved_ids.append(cid)
+                elif cid.lower() in name_to_id:
+                    resolved_ids.append(name_to_id[cid.lower()])
+                else:
+                    resolved_ids.append(cid)
+                    
+            docs = km.search(resolved_ids, query, k=5)
             
             if not docs:
                 return "No relevant information found in the specified Knowledge Bases."
