@@ -122,7 +122,9 @@ async def api_install_plugin(request: Request) -> JSONResponse:
             cmd = [sys.executable, "-m", "pip", "install", "-e", ".[rag]"]
             extra_kwargs["cwd"] = str(workspace_root)
         else:
-            cmd = [sys.executable, "-m", "pip", "install", "shibaclaw[rag]"]
+            from shibaclaw import __version__
+            target = f"shibaclaw[rag]=={__version__}" if __version__ != "dev" else "shibaclaw[rag]"
+            cmd = [sys.executable, "-m", "pip", "install", "--no-cache-dir", target]
     elif local_path.is_dir():
         install_target = str(local_path)
         cmd = [sys.executable, "-m", "pip", "install", install_target]
@@ -153,11 +155,17 @@ async def api_install_plugin(request: Request) -> JSONResponse:
         from shibaclaw.webui.routers.system import (
             _restart_callback,
             _schedule_restart_outside_loop,
-            _graceful_shutdown_server
+            _graceful_shutdown_server,
+            _shutdown_callback
         )
         
         async def _do_restart():
             await asyncio.sleep(1.5)
+            if _shutdown_callback is not None:
+                try:
+                    _shutdown_callback()
+                except Exception as _e:
+                    logger.debug("Ignored error: {}", _e)
             if _restart_callback is not None:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, _restart_callback)
@@ -240,11 +248,17 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
         from shibaclaw.webui.routers.system import (
             _restart_callback,
             _schedule_restart_outside_loop,
-            _graceful_shutdown_server
+            _graceful_shutdown_server,
+            _shutdown_callback
         )
         
         async def _do_restart():
             await asyncio.sleep(1.5)
+            if _shutdown_callback is not None:
+                try:
+                    _shutdown_callback()
+                except Exception as _e:
+                    logger.debug("Ignored error: {}", _e)
             if _restart_callback is not None:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, _restart_callback)
