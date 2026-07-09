@@ -24,7 +24,7 @@
 <details open>
 <summary>📢 <b>Latest Release: v0.9.0 (Unreleased)</b> — Click to see what's new</summary>
 
-- **Local RAG & Knowledge Bases** — Build personal knowledge collections locally using FAISS indexing and LangChain. Upload PDF, CSV, HTML, and TXT files, which are automatically chunked and indexed with HuggingFace embeddings (`all-MiniLM-L6-v2`) for local semantic search.
+- **Local RAG & Knowledge Bases (Preview)** — Build personal knowledge collections locally using FAISS indexing and LangChain. Upload PDF, CSV, HTML, and TXT files, which are automatically chunked and indexed with HuggingFace embeddings (`all-MiniLM-L6-v2`) for local semantic search.
 - **Context-Aware Mentions System** — Directly reference and prompt the agent to prioritize specific Knowledge Bases (`@kb:name`), MCP Servers (`@mcp:name`), or Connected Apps (`@app:name`) using an autocomplete mention dropdown triggered by `@` in the chat input.
 - **Robust Self-Updater** — Automatically update your installation (both standard `pip` packages and Windows packaged executables) in the background with real-time progress bars in the WebUI.
 - **UI Modularization** — Reorganized frontend code by splitting settings, profiles, update, onboard, mentions, and knowledge functionalities into specialized JS modules to vastly improve maintainability.
