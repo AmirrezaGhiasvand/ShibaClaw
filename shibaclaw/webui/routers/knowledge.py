@@ -1,6 +1,7 @@
 import os
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from shibaclaw.agent.knowledge_manager import KnowledgeManager
 from shibaclaw.webui.agent_manager import agent_manager
@@ -16,7 +17,7 @@ async def api_knowledge_list(request: Request):
     """List all available knowledge base collections."""
     try:
         km = _get_km()
-        collections = km.list_collections()
+        collections = await run_in_threadpool(km.list_collections)
         return JSONResponse({"collections": collections})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -33,7 +34,7 @@ async def api_knowledge_create(request: Request):
         
     km = _get_km()
     try:
-        col = km.create_collection(col_id, name, description)
+        col = await run_in_threadpool(km.create_collection, col_id, name, description)
         return JSONResponse(col, status_code=201)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -48,7 +49,7 @@ async def api_knowledge_update(request: Request):
         name = data.get("name")
         description = data.get("description")
         km = _get_km()
-        meta = km.update_collection(collection_id, name, description)
+        meta = await run_in_threadpool(km.update_collection, collection_id, name, description)
         return JSONResponse(meta)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -60,7 +61,7 @@ async def api_knowledge_delete(request: Request):
     collection_id = request.path_params["collection_id"]
     try:
         km = _get_km()
-        km.delete_collection(collection_id)
+        await run_in_threadpool(km.delete_collection, collection_id)
         return JSONResponse({"status": "deleted"})
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -85,7 +86,7 @@ async def api_knowledge_upload(request: Request):
             while chunk := await file_item.read(8192):
                 buffer.write(chunk)
             
-        km.add_document(collection_id, temp_path, file_item.filename)
+        await run_in_threadpool(km.add_document, collection_id, temp_path, file_item.filename)
         return JSONResponse({"status": "uploaded", "filename": file_item.filename})
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)

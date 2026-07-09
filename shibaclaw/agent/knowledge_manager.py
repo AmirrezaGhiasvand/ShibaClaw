@@ -8,6 +8,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from filelock import FileLock
+
 # Suppress Hugging Face Hub unauthenticated request warnings and disable progress bars
 warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
@@ -37,10 +39,13 @@ class KnowledgeManager:
         self.workspace_path = workspace_path
         self.base_dir = self.workspace_path / "memory" / "knowledge"
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        # Using a reliable default local model for embeddings
-        self.embeddings = _get_embeddings()
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         self._faiss_cache = {}
+        
+    @property
+    def embeddings(self):
+        # Lazy load embeddings to avoid blocking event loop on init
+        return _get_embeddings()
 
     def _sanitize_id(self, collection_id: str) -> str:
         if not re.match(r"^[a-zA-Z0-9_-]+$", collection_id):
@@ -71,8 +76,11 @@ class KnowledgeManager:
             raise ValueError(f"Collection {collection_id} already exists")
         coll_dir.mkdir(parents=True)
         meta = {"id": collection_id, "name": name, "description": description, "files": []}
-        with open(coll_dir / "meta.json", "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2)
+        meta_file = coll_dir / "meta.json"
+        lock = FileLock(f"{meta_file}.lock")
+        with lock:
+            with open(meta_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
         return meta
 
     def update_collection(self, collection_id: str, name: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
@@ -80,14 +88,16 @@ class KnowledgeManager:
         if not coll_dir.exists():
             raise ValueError(f"Collection {collection_id} does not exist")
         meta_file = coll_dir / "meta.json"
-        with open(meta_file, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-        if name is not None:
-            meta["name"] = name
-        if description is not None:
-            meta["description"] = description
-        with open(meta_file, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2)
+        lock = FileLock(f"{meta_file}.lock")
+        with lock:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            if name is not None:
+                meta["name"] = name
+            if description is not None:
+                meta["description"] = description
+            with open(meta_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
         return meta
 
     def delete_collection(self, collection_id: str):
@@ -129,29 +139,47 @@ class KnowledgeManager:
             
             # Update FAISS
             faiss_dir = coll_dir / "index"
+            temp_faiss_dir = coll_dir / "index_tmp"
+            
             if faiss_dir.exists():
                 vectorstore = FAISS.load_local(str(faiss_dir), self.embeddings, allow_dangerous_deserialization=True)
                 vectorstore.add_documents(chunks)
             else:
                 vectorstore = FAISS.from_documents(chunks, self.embeddings)
                 
-            vectorstore.save_local(str(faiss_dir))
+            # Save to temporary directory first for atomic update
+            vectorstore.save_local(str(temp_faiss_dir))
+            
+            # Atomic rename (replace existing)
+            if faiss_dir.exists():
+                shutil.rmtree(faiss_dir, ignore_errors=True)
+            temp_faiss_dir.rename(faiss_dir)
             
             # Update cache
             cid = self._sanitize_id(collection_id)
             self._faiss_cache[cid] = vectorstore
             
-            # Update meta
+            # Update meta safely
             meta_file = coll_dir / "meta.json"
-            with open(meta_file, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-            if safe_filename not in meta.get("files", []):
-                meta.setdefault("files", []).append(safe_filename)
-            with open(meta_file, "w", encoding="utf-8") as f:
-                json.dump(meta, f, indent=2)
+            lock = FileLock(f"{meta_file}.lock")
+            with lock:
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                
+                if "files" not in meta:
+                    meta["files"] = []
+                    
+                if safe_filename not in meta["files"]:
+                    meta["files"].append(safe_filename)
+                    
+                with open(meta_file, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                    
         except Exception as e:
             if dest_path.exists():
                 os.remove(dest_path)
+            if 'temp_faiss_dir' in locals() and temp_faiss_dir.exists():
+                shutil.rmtree(temp_faiss_dir, ignore_errors=True)
             raise e
 
     def search(self, collection_ids: List[str], query: str, k: int = 4) -> List[Document]:

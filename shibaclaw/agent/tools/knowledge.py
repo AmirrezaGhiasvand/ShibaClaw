@@ -46,8 +46,10 @@ class KnowledgeSearchTool(Tool):
                 
             km = KnowledgeManager(agent_manager.config.workspace_path)
             
+            import asyncio
+            
             # Resolve names to IDs if the agent passed names instead of IDs
-            all_cols = km.list_collections()
+            all_cols = await asyncio.to_thread(km.list_collections)
             name_to_id = {c.get("name", "").lower(): c["id"] for c in all_cols}
             
             resolved_ids = []
@@ -59,7 +61,7 @@ class KnowledgeSearchTool(Tool):
                 else:
                     resolved_ids.append(cid)
                     
-            docs = km.search(resolved_ids, query, k=5)
+            docs = await asyncio.to_thread(km.search, resolved_ids, query, k=5)
             
             if not docs:
                 return "No relevant information found in the specified Knowledge Bases."

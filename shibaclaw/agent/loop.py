@@ -582,8 +582,10 @@ class ShibaBrain:
             active_kbs = None
             try:
                 from shibaclaw.agent.knowledge_manager import KnowledgeManager
+                import asyncio
+                
                 km = KnowledgeManager(self.context.workspace)
-                all_collections = km.list_collections()
+                all_collections = await asyncio.to_thread(km.list_collections)
                 
                 session_kb_ids = []
                 if chat_id:
