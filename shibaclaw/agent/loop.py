@@ -594,15 +594,33 @@ class ShibaBrain:
                         sess = agent_manager.pm.get_or_create(chat_id)
                         session_kb_ids = sess.metadata.get("knowledge_bases", [])
                 
-                if all_collections and session_kb_ids:
+                mentioned_kb_names = [k.lower() for k in (metadata.get("mentioned_kbs", []) if metadata else [])]
+
+                if all_collections and (session_kb_ids or mentioned_kb_names):
                     active_kbs = []
+                    new_session_kb_ids = list(session_kb_ids)
+                    changed = False
+                    
                     for col in all_collections:
                         col_id = col.get("id", "")
-                        if col_id in session_kb_ids:
-                            col_name = col.get("name", "")
+                        col_name = col.get("name", "")
+                        
+                        is_mentioned = col_name.lower() in mentioned_kb_names
+                        if is_mentioned and col_id not in new_session_kb_ids:
+                            new_session_kb_ids.append(col_id)
+                            changed = True
+                            
+                        if col_id in new_session_kb_ids:
                             col_desc = col.get("description", "")
                             desc_part = f" - Desc: {col_desc}" if col_desc else ""
                             active_kbs.append(f"ID: {col_id} (Name: '{col_name}'){desc_part}")
+                            
+                    if changed and chat_id:
+                        from shibaclaw.webui.agent_manager import agent_manager
+                        if agent_manager.pm:
+                            sess = agent_manager.pm.get_or_create(chat_id)
+                            sess.metadata["knowledge_bases"] = new_session_kb_ids
+                            agent_manager.pm.save(sess)
             except Exception:
                 pass
 
