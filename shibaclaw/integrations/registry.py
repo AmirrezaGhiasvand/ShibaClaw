@@ -48,6 +48,35 @@ def discover_plugins() -> dict[str, type[BaseChannel]]:
             plugins[ep.name] = cls
         except Exception:
             pass
+def discover_local_plugins() -> dict[str, type[BaseChannel]]:
+    """Discover local plugins stored in the user's plugins directory."""
+    import sys
+    from shibaclaw.config.paths import get_plugins_dir
+    from shibaclaw.integrations.base import BaseChannel as _Base
+
+    plugins_dir = get_plugins_dir()
+    if str(plugins_dir) not in sys.path:
+        sys.path.insert(0, str(plugins_dir))
+
+    plugins: dict[str, type[BaseChannel]] = {}
+    if not plugins_dir.exists():
+        return plugins
+
+    for _, name, ispkg in pkgutil.iter_modules([str(plugins_dir)]):
+        if not ispkg:
+            continue
+        try:
+            mod = importlib.import_module(name)
+            for attr in dir(mod):
+                obj = getattr(mod, attr)
+                if isinstance(obj, type) and issubclass(obj, _Base) and obj is not _Base:
+                    # Strip 'shibaclaw-channel-' prefix if it exists to get the short name
+                    short_name = name.replace("shibaclaw-channel-", "").replace("shibaclaw_", "")
+                    plugins[short_name] = obj
+                    break
+        except Exception as e:
+            logger.debug("Failed to load local plugin {}: {}", name, e)
+
     return plugins
 
 
@@ -64,8 +93,13 @@ def discover_all() -> dict[str, type[BaseChannel]]:
             logger.debug("Channel '{}' not loadable: {}", modname, e)
 
     external = discover_plugins()
-    shadowed = set(external) & set(builtin)
+    local = discover_local_plugins()
+    
+    # Merge external and local, with local overriding external if duplicated
+    all_external = {**external, **local}
+    
+    shadowed = set(all_external) & set(builtin)
     if shadowed:
         logger.warning("Plugin(s) shadowed by built-in channels (ignored): {}", shadowed)
 
-    return {**external, **builtin}
+    return {**all_external, **builtin}

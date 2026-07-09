@@ -87,12 +87,6 @@ async def api_list_plugins(request: Request) -> JSONResponse:
 
 
 async def api_install_plugin(request: Request) -> JSONResponse:
-    from shibaclaw.helpers.system import is_running_as_exe
-    if is_running_as_exe():
-        return JSONResponse({
-            "ok": False,
-            "error": "Plugin installation is not supported in the packaged .exe version. Please run ShibaClaw from a Python environment (pip/source) to install plugins."
-        }, status_code=400)
 
     try:
         body = await request.json()
@@ -106,6 +100,113 @@ async def api_install_plugin(request: Request) -> JSONResponse:
     import re
     if not re.match(r"^shibaclaw-[a-zA-Z0-9_\-]+$", package):
         return JSONResponse({"error": "Only shibaclaw official plugins can be installed"}, status_code=400)
+
+    from shibaclaw.helpers.system import is_running_as_exe
+    is_exe = is_running_as_exe()
+    if is_exe and package == "shibaclaw-rag":
+        return JSONResponse({
+            "ok": False,
+            "error": "The Local RAG plugin requires complex external ML dependencies (langchain, faiss, etc.) which cannot be dynamically installed in the frozen .exe version. Please run ShibaClaw from source to use this feature."
+        }, status_code=400)
+
+    from shibaclaw.webui.routers.system import (
+        _restart_callback,
+        _schedule_restart_outside_loop,
+        _graceful_shutdown_server,
+        _shutdown_callback
+    )
+
+    async def _do_restart():
+        await asyncio.sleep(1.5)
+        if _shutdown_callback is not None:
+            try:
+                _shutdown_callback()
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
+        if _restart_callback is not None:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _restart_callback)
+        else:
+            _schedule_restart_outside_loop(delay=2.0)
+            _graceful_shutdown_server()
+
+    if is_exe:
+        import httpx
+        import tempfile
+        import zipfile
+        import shutil
+        from pathlib import Path
+        from shibaclaw.config.paths import get_plugins_dir
+        from shibaclaw import __version__
+        
+        plugins_dir = get_plugins_dir()
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+        
+        tag = f"v{__version__}" if __version__ != "dev" else "main"
+        zip_url = f"https://github.com/RikyZ90/ShibaClaw/archive/refs/{'tags/' + tag if tag != 'main' else 'heads/main'}.zip"
+        
+        try:
+            logger.info("Downloading plugin {} from {}", package, zip_url)
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                resp = await client.get(zip_url)
+                resp.raise_for_status()
+                
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                    tmp.write(resp.content)
+                    tmp_path = tmp.name
+                    
+            logger.info("Extracting plugin {}", package)
+            with zipfile.ZipFile(tmp_path, 'r') as z:
+                root_folder = z.namelist()[0].split('/')[0]
+                target_prefix = f"{root_folder}/plugins/{package}/"
+                
+                plugin_files = [f for f in z.namelist() if f.startswith(target_prefix)]
+                if not plugin_files:
+                    return JSONResponse({"ok": False, "error": f"Plugin {package} not found in release archive."}, status_code=404)
+                
+                short_name = package.replace("shibaclaw-channel-", "").replace("shibaclaw-tts-", "").replace("shibaclaw_", "")
+                target_dir = plugins_dir / short_name
+                if target_dir.exists():
+                    shutil.rmtree(target_dir)
+                target_dir.mkdir(parents=True)
+                
+                for f in plugin_files:
+                    if f.endswith('/'):
+                        continue
+                    rel_path = f[len(target_prefix):]
+                    if not rel_path:
+                        continue
+                    
+                    # Se c'è una cartella col nome del pacchetto (es. shibaclaw_channel_whatsapp),
+                    # estraiamo direttamente il suo contenuto, ignorando il resto
+                    # (questo adatta la struttura di pip a una struttura locale)
+                    pkg_snake_case = package.replace("-", "_")
+                    if rel_path.startswith(f"{pkg_snake_case}/"):
+                        rel_path = rel_path[len(f"{pkg_snake_case}/"):]
+                    elif rel_path == "pyproject.toml" or rel_path == "README.md":
+                        # Ignoriamo i file root del pacchetto pip, ci serve solo il codice sorgente
+                        continue
+                    
+                    if not rel_path:
+                        continue
+                        
+                    dest_path = target_dir / rel_path
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(f) as zf, open(dest_path, "wb") as out:
+                        shutil.copyfileobj(zf, out)
+            
+            Path(tmp_path).unlink(missing_ok=True)
+            
+            asyncio.create_task(_do_restart())
+            return JSONResponse({
+                "ok": True,
+                "stdout": f"Plugin {package} downloaded and extracted locally.",
+                "restarting": True
+            })
+            
+        except Exception as e:
+            logger.exception("Plugin installation failed")
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
     from pathlib import Path
     workspace_root = Path(__file__).resolve().parent.parent.parent.parent
@@ -152,28 +253,7 @@ async def api_install_plugin(request: Request) -> JSONResponse:
                 "stdout": stdout.decode()
             }, status_code=500)
             
-        from shibaclaw.webui.routers.system import (
-            _restart_callback,
-            _schedule_restart_outside_loop,
-            _graceful_shutdown_server,
-            _shutdown_callback
-        )
-        
-        async def _do_restart():
-            await asyncio.sleep(1.5)
-            if _shutdown_callback is not None:
-                try:
-                    _shutdown_callback()
-                except Exception as _e:
-                    logger.debug("Ignored error: {}", _e)
-            if _restart_callback is not None:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, _restart_callback)
-            else:
-                _schedule_restart_outside_loop(delay=2.0)
-                _graceful_shutdown_server()
-                
-        asyncio.create_task(_do_restart())
+            asyncio.create_task(_do_restart())
         
         return JSONResponse({
             "ok": True,
@@ -185,12 +265,6 @@ async def api_install_plugin(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 async def api_uninstall_plugin(request: Request) -> JSONResponse:
-    from shibaclaw.helpers.system import is_running_as_exe
-    if is_running_as_exe():
-        return JSONResponse({
-            "ok": False,
-            "error": "Plugin uninstallation is not supported in the packaged .exe version. Please run ShibaClaw from a Python environment (pip/source) to uninstall plugins."
-        }, status_code=400)
 
     try:
         body = await request.json()
@@ -204,6 +278,50 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
     import re
     if not re.match(r"^shibaclaw-[a-zA-Z0-9_\-]+$", package):
         return JSONResponse({"error": "Only shibaclaw official plugins can be uninstalled"}, status_code=400)
+
+    from shibaclaw.helpers.system import is_running_as_exe
+    is_exe = is_running_as_exe()
+    
+    from shibaclaw.webui.routers.system import (
+        _restart_callback,
+        _schedule_restart_outside_loop,
+        _graceful_shutdown_server,
+        _shutdown_callback
+    )
+
+    async def _do_restart():
+        await asyncio.sleep(1.5)
+        if _shutdown_callback is not None:
+            try:
+                _shutdown_callback()
+            except Exception as _e:
+                logger.debug("Ignored error: {}", _e)
+        if _restart_callback is not None:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _restart_callback)
+        else:
+            _schedule_restart_outside_loop(delay=2.0)
+            _graceful_shutdown_server()
+
+    if is_exe:
+        if package == "shibaclaw-rag":
+            return JSONResponse({"ok": False, "error": "RAG is not supported in the .exe version."}, status_code=400)
+            
+        import shutil
+        from shibaclaw.config.paths import get_plugins_dir
+        
+        short_name = package.replace("shibaclaw-channel-", "").replace("shibaclaw-tts-", "").replace("shibaclaw_", "")
+        target_dir = get_plugins_dir() / short_name
+        
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+            
+        asyncio.create_task(_do_restart())
+        return JSONResponse({
+            "ok": True,
+            "stdout": f"Plugin {package} folder deleted locally.",
+            "restarting": True
+        })
 
     if package == "shibaclaw-rag":
         cmd = [
@@ -245,28 +363,7 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
                 "stdout": stdout.decode()
             }, status_code=500)
             
-        from shibaclaw.webui.routers.system import (
-            _restart_callback,
-            _schedule_restart_outside_loop,
-            _graceful_shutdown_server,
-            _shutdown_callback
-        )
-        
-        async def _do_restart():
-            await asyncio.sleep(1.5)
-            if _shutdown_callback is not None:
-                try:
-                    _shutdown_callback()
-                except Exception as _e:
-                    logger.debug("Ignored error: {}", _e)
-            if _restart_callback is not None:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, _restart_callback)
-            else:
-                _schedule_restart_outside_loop(delay=2.0)
-                _graceful_shutdown_server()
-                
-        asyncio.create_task(_do_restart())
+            asyncio.create_task(_do_restart())
         
         return JSONResponse({
             "ok": True,

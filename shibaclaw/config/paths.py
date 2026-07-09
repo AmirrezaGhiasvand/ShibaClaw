@@ -105,3 +105,8 @@ def get_bridge_install_dir() -> Path:
 def get_legacy_sessions_dir() -> Path:
     """Return the legacy global session directory used for migration fallback."""
     return Path.home() / ".shibaclaw" / "sessions"
+
+
+def get_plugins_dir() -> Path:
+    """Return the local dynamic plugins directory."""
+    return ensure_dir(get_app_root() / "plugins")
