@@ -1,6 +1,4 @@
 import sys
-import pytest
-from pathlib import Path
 
 from shibaclaw.integrations.base import BaseChannel
 from shibaclaw.integrations.registry import discover_local_plugins
