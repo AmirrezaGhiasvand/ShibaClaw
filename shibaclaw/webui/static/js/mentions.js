@@ -204,16 +204,21 @@ function handleMentionKeydown(e) {
     
     if (e.key === "ArrowDown") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         mentionState.selectedIndex = (mentionState.selectedIndex + 1) % mentionState.matches.length;
         renderMentionMenu();
     } else if (e.key === "ArrowUp") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         mentionState.selectedIndex = (mentionState.selectedIndex - 1 + mentionState.matches.length) % mentionState.matches.length;
         renderMentionMenu();
     } else if (e.key === "Enter") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         insertMention(mentionState.matches[mentionState.selectedIndex]);
     } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         mentionState.active = false;
         renderMentionMenu();
     }
