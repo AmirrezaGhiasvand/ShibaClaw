@@ -109,26 +109,20 @@ async def api_install_plugin(request: Request) -> JSONResponse:
             "error": "The Local RAG plugin requires complex external ML dependencies (langchain, faiss, etc.) which cannot be dynamically installed in the frozen .exe version. Please run ShibaClaw from source to use this feature."
         }, status_code=400)
 
-    from shibaclaw.webui.routers.system import (
-        _restart_callback,
-        _schedule_restart_outside_loop,
-        _graceful_shutdown_server,
-        _shutdown_callback
-    )
+    from shibaclaw.webui.routers import system as system_router
 
     async def _do_restart():
         await asyncio.sleep(1.5)
-        if _shutdown_callback is not None:
+        if system_router._shutdown_callback is not None:
             try:
-                _shutdown_callback()
+                system_router._shutdown_callback()
             except Exception as _e:
                 logger.debug("Ignored error: {}", _e)
-        if _restart_callback is not None:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _restart_callback)
+        if system_router._restart_callback is not None:
+            system_router._restart_callback()
         else:
-            _schedule_restart_outside_loop(delay=2.0)
-            _graceful_shutdown_server()
+            system_router._schedule_restart_outside_loop(delay=2.0)
+            system_router._graceful_shutdown_server()
 
     if is_exe:
         import httpx
@@ -164,11 +158,10 @@ async def api_install_plugin(request: Request) -> JSONResponse:
                 if not plugin_files:
                     return JSONResponse({"ok": False, "error": f"Plugin {package} not found in release archive."}, status_code=404)
                 
-                short_name = package.replace("shibaclaw-channel-", "").replace("shibaclaw-tts-", "").replace("shibaclaw_", "")
-                target_dir = plugins_dir / short_name
+                pkg_snake_case = package.replace("-", "_")
+                target_dir = plugins_dir / pkg_snake_case
                 if target_dir.exists():
                     shutil.rmtree(target_dir)
-                target_dir.mkdir(parents=True)
                 
                 for f in plugin_files:
                     if f.endswith('/'):
@@ -177,26 +170,23 @@ async def api_install_plugin(request: Request) -> JSONResponse:
                     if not rel_path:
                         continue
                     
-                    # Se c'è una cartella col nome del pacchetto (es. shibaclaw_channel_whatsapp),
-                    # estraiamo direttamente il suo contenuto, ignorando il resto
-                    # (questo adatta la struttura di pip a una struttura locale)
-                    pkg_snake_case = package.replace("-", "_")
-                    if rel_path.startswith(f"{pkg_snake_case}/"):
-                        rel_path = rel_path[len(f"{pkg_snake_case}/"):]
-                    elif rel_path == "pyproject.toml" or rel_path == "README.md":
+                    if rel_path == "pyproject.toml" or rel_path == "README.md":
                         # Ignoriamo i file root del pacchetto pip, ci serve solo il codice sorgente
                         continue
-                    
-                    if not rel_path:
-                        continue
                         
-                    dest_path = target_dir / rel_path
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    with z.open(f) as zf, open(dest_path, "wb") as out:
-                        shutil.copyfileobj(zf, out)
+                    # Manteniamo intatta la struttura della cartella sorgente per evitare
+                    # ModuleNotFoundError causati da absolute imports all'interno dei plugin
+                    if rel_path.startswith(f"{pkg_snake_case}/"):
+                        dest_path = plugins_dir / rel_path
+                        dest_path.parent.mkdir(parents=True, exist_ok=True)
+                        with z.open(f) as zf, open(dest_path, "wb") as out:
+                            shutil.copyfileobj(zf, out)
             
             Path(tmp_path).unlink(missing_ok=True)
             
+            import importlib
+            importlib.invalidate_caches()
+
             asyncio.create_task(_do_restart())
             return JSONResponse({
                 "ok": True,
@@ -253,8 +243,10 @@ async def api_install_plugin(request: Request) -> JSONResponse:
                 "stdout": stdout.decode()
             }, status_code=500)
             
-            asyncio.create_task(_do_restart())
-        
+        import importlib
+        importlib.invalidate_caches()
+
+        asyncio.create_task(_do_restart())
         return JSONResponse({
             "ok": True,
             "stdout": stdout.decode().strip(),
@@ -282,26 +274,20 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
     from shibaclaw.helpers.system import is_running_as_exe
     is_exe = is_running_as_exe()
     
-    from shibaclaw.webui.routers.system import (
-        _restart_callback,
-        _schedule_restart_outside_loop,
-        _graceful_shutdown_server,
-        _shutdown_callback
-    )
+    from shibaclaw.webui.routers import system as system_router
 
     async def _do_restart():
         await asyncio.sleep(1.5)
-        if _shutdown_callback is not None:
+        if system_router._shutdown_callback is not None:
             try:
-                _shutdown_callback()
+                system_router._shutdown_callback()
             except Exception as _e:
                 logger.debug("Ignored error: {}", _e)
-        if _restart_callback is not None:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _restart_callback)
+        if system_router._restart_callback is not None:
+            system_router._restart_callback()
         else:
-            _schedule_restart_outside_loop(delay=2.0)
-            _graceful_shutdown_server()
+            system_router._schedule_restart_outside_loop(delay=2.0)
+            system_router._graceful_shutdown_server()
 
     if is_exe:
         if package == "shibaclaw-rag":
@@ -310,12 +296,15 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
         import shutil
         from shibaclaw.config.paths import get_plugins_dir
         
-        short_name = package.replace("shibaclaw-channel-", "").replace("shibaclaw-tts-", "").replace("shibaclaw_", "")
-        target_dir = get_plugins_dir() / short_name
+        pkg_snake_case = package.replace("-", "_")
+        target_dir = get_plugins_dir() / pkg_snake_case
         
         if target_dir.exists():
             shutil.rmtree(target_dir)
             
+        import importlib
+        importlib.invalidate_caches()
+
         asyncio.create_task(_do_restart())
         return JSONResponse({
             "ok": True,
@@ -363,8 +352,10 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
                 "stdout": stdout.decode()
             }, status_code=500)
             
-            asyncio.create_task(_do_restart())
-        
+        import importlib
+        importlib.invalidate_caches()
+
+        asyncio.create_task(_do_restart())
         return JSONResponse({
             "ok": True,
             "stdout": stdout.decode().strip(),
