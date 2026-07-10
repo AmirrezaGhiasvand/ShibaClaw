@@ -4,13 +4,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from loguru import logger
 
-from shibaclaw.integrations.registry import discover_plugins
+from shibaclaw.integrations.registry import discover_plugins, discover_local_plugins
 from shibaclaw.tts.registry import discover_tts_plugins
 from shibaclaw.config.loader import load_config
 
 async def api_list_plugins(request: Request) -> JSONResponse:
     cfg = load_config()
-    installed_channels = discover_plugins()
+    installed_channels = {**discover_plugins(), **discover_local_plugins()}
     from shibaclaw.agent.knowledge_manager import RAG_AVAILABLE
 
     integrations = []
