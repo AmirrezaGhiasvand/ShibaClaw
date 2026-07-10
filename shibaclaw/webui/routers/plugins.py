@@ -109,25 +109,20 @@ async def api_install_plugin(request: Request) -> JSONResponse:
             "error": "The Local RAG plugin requires complex external ML dependencies (langchain, faiss, etc.) which cannot be dynamically installed in the frozen .exe version. Please run ShibaClaw from source to use this feature."
         }, status_code=400)
 
-    from shibaclaw.webui.routers.system import (
-        _restart_callback,
-        _schedule_restart_outside_loop,
-        _graceful_shutdown_server,
-        _shutdown_callback
-    )
+    from shibaclaw.webui.routers import system as system_router
 
     async def _do_restart():
         await asyncio.sleep(1.5)
-        if _shutdown_callback is not None:
+        if system_router._shutdown_callback is not None:
             try:
-                _shutdown_callback()
+                system_router._shutdown_callback()
             except Exception as _e:
                 logger.debug("Ignored error: {}", _e)
-        if _restart_callback is not None:
-            _restart_callback()
+        if system_router._restart_callback is not None:
+            system_router._restart_callback()
         else:
-            _schedule_restart_outside_loop(delay=2.0)
-            _graceful_shutdown_server()
+            system_router._schedule_restart_outside_loop(delay=2.0)
+            system_router._graceful_shutdown_server()
 
     if is_exe:
         import httpx
@@ -279,25 +274,20 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
     from shibaclaw.helpers.system import is_running_as_exe
     is_exe = is_running_as_exe()
     
-    from shibaclaw.webui.routers.system import (
-        _restart_callback,
-        _schedule_restart_outside_loop,
-        _graceful_shutdown_server,
-        _shutdown_callback
-    )
+    from shibaclaw.webui.routers import system as system_router
 
     async def _do_restart():
         await asyncio.sleep(1.5)
-        if _shutdown_callback is not None:
+        if system_router._shutdown_callback is not None:
             try:
-                _shutdown_callback()
+                system_router._shutdown_callback()
             except Exception as _e:
                 logger.debug("Ignored error: {}", _e)
-        if _restart_callback is not None:
-            _restart_callback()
+        if system_router._restart_callback is not None:
+            system_router._restart_callback()
         else:
-            _schedule_restart_outside_loop(delay=2.0)
-            _graceful_shutdown_server()
+            system_router._schedule_restart_outside_loop(delay=2.0)
+            system_router._graceful_shutdown_server()
 
     if is_exe:
         if package == "shibaclaw-rag":
