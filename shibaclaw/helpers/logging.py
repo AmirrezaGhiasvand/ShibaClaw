@@ -10,6 +10,34 @@ def _is_debug_env() -> bool:
     return os.environ.get("SHIBACLAW_DEBUG", "").lower() in ("1", "true", "yes", "on")
 
 
+class UnicodeSafeStream:
+    """Wrapper around sys.stderr/sys.stdout to safely encode unicode characters.
+    This prevents UnicodeEncodeError crashes on Windows when printing emojis.
+    """
+    def __init__(self, stream):
+        self.stream = stream
+        self.encoding = getattr(stream, "encoding", "utf-8") or "utf-8"
+
+    def write(self, message):
+        try:
+            self.stream.write(message)
+        except UnicodeEncodeError:
+            # Fallback to safely replacing invalid characters
+            safe_message = message.encode(self.encoding, errors="replace").decode(self.encoding)
+            self.stream.write(safe_message)
+
+    def flush(self):
+        self.stream.flush()
+
+    def isatty(self):
+        if hasattr(self.stream, "isatty"):
+            return self.stream.isatty()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
 def setup_shiba_logging(level: str = "INFO", show_path: bool = False):
     """
     Setup a compact, readable log format for terminal usage.
@@ -49,9 +77,10 @@ def setup_shiba_logging(level: str = "INFO", show_path: bool = False):
 
     debug_mode = level.upper() == "DEBUG"
     if sys.stderr is not None:
+        safe_stderr = UnicodeSafeStream(sys.stderr)
         try:
             logger.add(
-                sys.stderr,
+                safe_stderr,
                 format=fmt,
                 level=level,
                 colorize=True,
@@ -61,7 +90,7 @@ def setup_shiba_logging(level: str = "INFO", show_path: bool = False):
         except Exception:
             # Fallback to no-color, no-emoji if the above fails
             logger.add(
-                sys.stderr,
+                safe_stderr,
                 format="[{time:HH:mm:ss}] {level: <8} {extra[component]: <7} | {message}",
                 level=level,
                 colorize=False,
