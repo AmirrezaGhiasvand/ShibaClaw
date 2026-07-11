@@ -92,6 +92,26 @@ class ProviderConfig(Base):
             return cleaned or None
         return value
 
+    def resolve_api_key(self, provider_name: str = "") -> str:
+        """Return the API key: from config field, vault, or environment.
+
+        Resolution order:
+        1. ``self.api_key`` (plain-text in config, for backward compat).
+        2. Encrypted vault lookup under ``providers/<provider_name>.api_key``.
+        3. Empty string (caller should then try env vars).
+        """
+        if self.api_key:
+            return self.api_key
+        if provider_name:
+            try:
+                from shibaclaw.security.credential_manager import get_credential_manager
+                vault_key = get_credential_manager().get_secret("providers", f"{provider_name}.api_key")
+                if vault_key and isinstance(vault_key, str):
+                    return vault_key
+            except Exception:
+                pass
+        return ""
+
 
 class ProvidersConfig(Base):
     """Configuration for LLM providers."""
@@ -297,8 +317,14 @@ class Config(BaseSettings):
     ) -> bool:
         if not provider:
             return False
+        # Check plain-text field first
         if provider.api_key:
             return True
+        # Check encrypted vault
+        if spec:
+            resolved = provider.resolve_api_key(spec.name)
+            if resolved:
+                return True
         return bool(spec and spec.env_key and os.environ.get(spec.env_key))
 
     def _match_provider(
@@ -370,8 +396,10 @@ class Config(BaseSettings):
         return name
 
     def get_api_key(self, model: str | None = None) -> "str | None":
-        p = self.get_provider(model)
-        return p.api_key if p else None
+        p, name = self._match_provider(model)
+        if not p:
+            return None
+        return p.resolve_api_key(name or "") or p.api_key or None
 
     def get_api_base(self, model: str | None = None) -> "str | None":
         from shibaclaw.thinkers.registry import find_by_name

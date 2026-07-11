@@ -1,4 +1,11 @@
-"""Authentication and middleware for the WebUI."""
+"""Authentication and middleware for the WebUI.
+
+Supports two modes:
+1. **User/password** — admin user configured via the WebUI setup wizard;
+   login produces a session token verified on every request.
+2. **Legacy token** — fallback for headless / env-var driven deployments
+   (``SHIBACLAW_AUTH_TOKEN`` or the ``auth_token`` file).
+"""
 
 from __future__ import annotations
 
@@ -15,8 +22,18 @@ from shibaclaw.config.paths import get_app_root
 AUTH_TOKEN_FILE = get_app_root() / "auth_token"
 
 
+# ------------------------------------------------------------------
+# Feature flag
+# ------------------------------------------------------------------
+
+
 def _auth_enabled() -> bool:
     return os.environ.get("SHIBACLAW_AUTH", "true").lower() not in ("false", "0", "no", "off")
+
+
+# ------------------------------------------------------------------
+# Legacy token helpers (kept for backward-compat & headless mode)
+# ------------------------------------------------------------------
 
 
 def _load_or_generate_token() -> str:
@@ -79,6 +96,31 @@ def verify_token_value(token_candidate: str | None) -> bool:
     return bool(candidate) and hmac.compare_digest(candidate, auth_token)
 
 
+# ------------------------------------------------------------------
+# Session-based auth (new)
+# ------------------------------------------------------------------
+
+
+def _is_user_setup() -> bool:
+    """Return True if an admin user has been registered in the credential vault."""
+    try:
+        from shibaclaw.security.credential_manager import get_credential_manager
+        return get_credential_manager().is_setup()
+    except Exception:
+        return False
+
+
+def _verify_session_token(token: str) -> bool:
+    """Return True if *token* is a valid, non-expired session token."""
+    from shibaclaw.security.credential_manager import CredentialManager
+    return CredentialManager.verify_session_token(token)
+
+
+# ------------------------------------------------------------------
+# Unified token check
+# ------------------------------------------------------------------
+
+
 def mask_token(token: str) -> str:
     if len(token) <= 4:
         return "****"
@@ -86,12 +128,36 @@ def mask_token(token: str) -> str:
 
 
 def check_token(request: Request) -> bool:
+    """Validate a request's credentials.
+
+    Accepts either:
+    - ``Authorization: Bearer <session_token>`` (from user/password login)
+    - ``Authorization: Bearer <legacy_token>`` (from env / file)
+    """
     auth_header = request.headers.get("authorization", "")
     token_candidate = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
+
+    if not token_candidate:
+        return False
+
+    # Try session token first (user/password login)
+    if _verify_session_token(token_candidate):
+        return True
+
+    # Fallback to legacy static token
     return verify_token_value(token_candidate)
 
 
-PUBLIC_PATHS = ("/static/", "/api/auth/", "/api/file-get", "/api/oauth/openrouter/callback")
+# ------------------------------------------------------------------
+# Paths that bypass auth
+# ------------------------------------------------------------------
+
+PUBLIC_PATHS = (
+    "/static/",
+    "/api/auth/",
+    "/api/file-get",
+    "/api/oauth/openrouter/callback",
+)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

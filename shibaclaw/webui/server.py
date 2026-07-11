@@ -20,6 +20,8 @@ from starlette.staticfiles import StaticFiles
 
 from .agent_manager import agent_manager
 from .api import (
+    api_auth_login,
+    api_auth_setup,
     api_auth_status,
     api_auth_verify,
     api_automation_job_delete,
@@ -139,6 +141,8 @@ def create_app(
         Route("/", index),
         Route("/api/auth/verify", api_auth_verify, methods=["POST"]),
         Route("/api/auth/status", api_auth_status, methods=["GET"]),
+        Route("/api/auth/setup", api_auth_setup, methods=["POST"]),
+        Route("/api/auth/login", api_auth_login, methods=["POST"]),
         Route("/api/status", api_status),
         Route("/api/settings", api_settings_get, methods=["GET"]),
         Route("/api/settings", api_settings_post, methods=["POST"]),

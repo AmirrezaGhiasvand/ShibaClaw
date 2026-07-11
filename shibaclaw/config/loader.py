@@ -67,7 +67,16 @@ def load_config(config_path: Path | None = None) -> Config:
                 data = _migrate_config(data)
             except Exception:
                 logger.debug("[config] _onboard_plugins failed on existing config", exc_info=True)
-        return Config.model_validate(data)
+        cfg = Config.model_validate(data)
+        try:
+            from shibaclaw.security.credential_manager import get_credential_manager
+            cm = get_credential_manager()
+            if cm.is_setup():
+                if _migrate_config_secrets_inline(cfg, cm):
+                    save_config(cfg, path)
+        except Exception:
+            logger.debug("[config] auto-migration of secrets to vault failed", exc_info=True)
+        return cfg
     except (json.JSONDecodeError, ValueError, pydantic.ValidationError) as e:
         logger.warning(f"Failed to load config from {path}: {e}")
         logger.warning("Using default configuration.")
@@ -193,3 +202,51 @@ def _migrate_config(data: dict) -> dict:
         data["connectedApps"] = {}
 
     return data
+
+
+def _migrate_config_secrets_inline(cfg: Config, cm) -> bool:
+    """Move plain-text secrets from a Config object into the vault and zero them out."""
+    from shibaclaw.config.schema import ProvidersConfig
+
+    migrated = False
+
+    # --- Provider API keys ---
+    for field_name in ProvidersConfig.model_fields:
+        provider_cfg = getattr(cfg.providers, field_name, None)
+        if provider_cfg is None:
+            continue
+        if provider_cfg.api_key:
+            cm.set_secret("providers", f"{field_name}.api_key", provider_cfg.api_key)
+            provider_cfg.api_key = ""
+            migrated = True
+
+    # --- Web search API key ---
+    if cfg.tools.web.search.api_key:
+        cm.set_secret("tools", "web_search.api_key", cfg.tools.web.search.api_key)
+        cfg.tools.web.search.api_key = ""
+        migrated = True
+
+    # --- Audio API key ---
+    if cfg.audio.api_key:
+        cm.set_secret("audio", "api_key", cfg.audio.api_key)
+        cfg.audio.api_key = None
+        migrated = True
+
+    # --- Channel secrets (email password, bot tokens, etc.) ---
+    if cfg.channels.model_extra:
+        for ch_name, ch_data in cfg.channels.model_extra.items():
+            if not isinstance(ch_data, dict):
+                continue
+            secret_keys = [
+                k for k in ch_data
+                if any(s in k.lower() for s in ("token", "password", "secret", "key"))
+                and ch_data[k]
+                and isinstance(ch_data[k], str)
+            ]
+            for sk in secret_keys:
+                cm.set_secret("channels", f"{ch_name}.{sk}", ch_data[sk])
+                ch_data[sk] = ""
+                migrated = True
+
+    return migrated
+
