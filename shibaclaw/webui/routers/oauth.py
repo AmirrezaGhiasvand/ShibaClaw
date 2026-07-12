@@ -24,7 +24,11 @@ def get_oauth_providers_status() -> list[dict]:
         try:
             if p["name"] == "openrouter":
                 cfg = agent_manager.config
-                has_config_key = bool(cfg and cfg.providers.openrouter.api_key)
+                # ProviderConfig no longer has a plain api_key field;
+                # use resolve_api_key() which checks the vault.
+                has_config_key = bool(
+                    cfg and cfg.providers.openrouter.resolve_api_key("openrouter")
+                )
                 has_env = bool(os.environ.get("OPENROUTER_API_KEY"))
                 status = "configured" if (has_config_key or has_env) else "not_configured"
                 if has_config_key:
