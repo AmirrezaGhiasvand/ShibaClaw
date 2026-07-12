@@ -46,3 +46,4 @@ audit_results.json
 .mypy_cache/
 .coverage
 htmlcov/
+update_readmes.py
