@@ -782,8 +782,6 @@ class ShibaBrain:
 
     def stop(self) -> None:
         self._running = False
-        if self._mcp_worker_task and not self._mcp_worker_task.done():
-            self._mcp_worker_task.cancel()
         logger.debug("Agent loop stopping")
 
     async def _process_message(

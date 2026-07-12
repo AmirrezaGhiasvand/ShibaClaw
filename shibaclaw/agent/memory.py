@@ -128,11 +128,11 @@ class ScentKeeper:
             return ""
         try:
             mtime = self.user_file.stat().st_mtime_ns
+            if getattr(self, "_user_mtime", 0) == mtime:
+                return self._user_cache
+            content = self.user_file.read_text(encoding="utf-8")
         except FileNotFoundError:
             return ""
-        if getattr(self, "_user_mtime", 0) == mtime:
-            return self._user_cache
-        content = self.user_file.read_text(encoding="utf-8")
         self._user_mtime = mtime
         self._user_cache = content
         return content
@@ -146,11 +146,11 @@ class ScentKeeper:
             return ""
         try:
             mtime = self.memory_file.stat().st_mtime_ns
+            if getattr(self, "_mem_mtime", 0) == mtime:
+                return self._mem_cache
+            content = self.memory_file.read_text(encoding="utf-8")
         except FileNotFoundError:
             return ""
-        if getattr(self, "_mem_mtime", 0) == mtime:
-            return self._mem_cache
-        content = self.memory_file.read_text(encoding="utf-8")
         self._mem_mtime = mtime
         self._mem_cache = content
         return content

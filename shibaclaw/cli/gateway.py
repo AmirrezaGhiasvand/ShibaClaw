@@ -194,6 +194,10 @@ async def gateway_command(
             )
         )
 
+        if not exec_target:
+            logger.warning("No heartbeat target available. Aborting heartbeat execution.")
+            return ""
+
         outbound = await agent.process_direct(
             tasks,
             session_key,

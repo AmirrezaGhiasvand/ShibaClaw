@@ -190,6 +190,15 @@ async def finish_openrouter_oauth(request: Request, jobs: dict):
 
     job = jobs.get(job_id)
     if not job:
+        # Fallback for static callback URLs that stripped the path parameters
+        for j_id, j in jobs.items():
+            if j.get("provider") == "openrouter" and j.get("status") == "awaiting_redirect":
+                job_id = j_id
+                job = j
+                flow_token = flow_token or j.get("_openrouter_flow", "")
+                break
+                
+    if not job:
         return HTMLResponse(
             _oauth_result_page(False, "This OpenRouter login flow is no longer active."),
             status_code=404,

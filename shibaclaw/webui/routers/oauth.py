@@ -143,9 +143,16 @@ async def api_oauth_disconnect(request: Request):
         cm = get_credential_manager()
         await run_in_threadpool(cm.delete_secret, "providers", "openrouter.api_key")
         config = config_manager.load_config()
-        config.providers.openrouter.api_key = ""
         config_manager.save_config(config)
         await agent_manager.reload_config(config)
+    elif provider == "github_copilot":
+        try:
+            home = os.path.expanduser("~")
+            token_path = os.path.join(home, ".shibaclaw", "github_copilot", "access-token")
+            if os.path.exists(token_path):
+                os.remove(token_path)
+        except Exception:
+            pass
     elif provider == "openai_codex":
         try:
             import os

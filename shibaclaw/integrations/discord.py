@@ -367,12 +367,16 @@ class DiscordChannel(BaseChannel):
     ) -> bool:
         """Send a file attachment via Discord REST API using multipart/form-data."""
         path = Path(file_path)
-        if not path.is_file():
-            logger.warning("Discord file not found, skipping: {}", file_path)
-            return False
+        try:
+            if not path.is_file():
+                logger.warning("Discord file not found, skipping: {}", file_path)
+                return False
 
-        if path.stat().st_size > MAX_ATTACHMENT_BYTES:
-            logger.warning("Discord file too large (>20MB), skipping: {}", path.name)
+            if path.stat().st_size > MAX_ATTACHMENT_BYTES:
+                logger.warning("Discord file too large (>20MB), skipping: {}", path.name)
+                return False
+        except FileNotFoundError:
+            logger.warning("Discord file not found, skipping: {}", file_path)
             return False
 
         payload_json: dict[str, Any] = {}
