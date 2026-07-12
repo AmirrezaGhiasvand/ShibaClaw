@@ -239,6 +239,7 @@ class WecomChannel(BaseChannel):
             chat_id = body.get("chatid", sender_id)
 
             content_parts = []
+            media_paths: list[str] = []
 
             if msg_type == "text":
                 text = body.get("text", {}).get("content", "")
@@ -254,11 +255,161 @@ class WecomChannel(BaseChannel):
                     file_path = await self._download_and_save_media(file_url, aes_key, "image")
                     if file_path:
                         filename = os.path.basename(file_path)
-                        content_parts.append(f"[image: {filename}]\n[Image: source: {file_path}]")
+                        media_paths.append(file_path)
+                        content_parts.append(f"[image: {filename}]")
                     else:
                         content_parts.append("[image: download failed]")
                 else:
                     content_parts.append("[image: download failed]")
 
             elif msg_type == "voice":
-                voice_info = body.ge
+                voice_info = body.get("voice", {})
+                file_url = voice_info.get("url", "")
+                aes_key = voice_info.get("aeskey", "")
+
+                if file_url and aes_key:
+                    file_path = await self._download_and_save_media(file_url, aes_key, "voice")
+                    if file_path:
+                        transcription = await self.transcribe_audio(file_path)
+                        if transcription:
+                            content_parts.append(f"[transcription: {transcription}]")
+                        else:
+                            media_paths.append(file_path)
+                            content_parts.append(f"[voice: {os.path.basename(file_path)}]")
+                    else:
+                        content_parts.append("[voice: download failed]")
+                else:
+                    content_parts.append("[voice: download failed]")
+
+            elif msg_type == "file":
+                file_info = body.get("file", {})
+                file_url = file_info.get("url", "")
+                aes_key = file_info.get("aeskey", "")
+                filename = file_info.get("filename", "file")
+
+                if file_url and aes_key:
+                    file_path = await self._download_and_save_media(file_url, aes_key, "file", filename=filename)
+                    if file_path:
+                        media_paths.append(file_path)
+                        content_parts.append(f"[file: {os.path.basename(file_path)}]")
+                    else:
+                        content_parts.append(f"[file: {filename} — download failed]")
+                else:
+                    content_parts.append(f"[file: {filename}]")
+
+            elif msg_type == "mixed":
+                mixed_list = body.get("mixed", {}).get("items", [])
+                for item in mixed_list:
+                    itype = item.get("type", "")
+                    if itype == "text":
+                        text = item.get("text", {}).get("content", "")
+                        if text:
+                            content_parts.append(text)
+                    elif itype == "image":
+                        image_info = item.get("image", {})
+                        file_url = image_info.get("url", "")
+                        aes_key = image_info.get("aeskey", "")
+                        if file_url and aes_key:
+                            file_path = await self._download_and_save_media(file_url, aes_key, "image")
+                            if file_path:
+                                media_paths.append(file_path)
+                                content_parts.append(f"[image: {os.path.basename(file_path)}]")
+                            else:
+                                content_parts.append("[image: download failed]")
+
+            content = "\n".join(content_parts) if content_parts else MSG_TYPE_MAP.get(msg_type, f"[{msg_type}]")
+
+            if not self.is_allowed(sender_id):
+                logger.debug("WeCom: ignoring message from unauthorised sender {}", sender_id)
+                return
+
+            logger.debug("WeCom message from {}: {}...", sender_id, content[:50])
+
+            # Store frame for reply
+            self._chat_frames[chat_id] = frame
+
+            await self._handle_message(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content=content,
+                media=media_paths if media_paths else None,
+                metadata={
+                    "msg_type": msg_type,
+                    "chat_type": chat_type,
+                    "msg_id": msg_id,
+                    "wecom_frame": frame,
+                },
+            )
+
+        except Exception as e:
+            logger.error("Error processing WeCom message: {}", e)
+
+    async def send(self, msg: OutboundMessage) -> None:
+        """Send a message through WeCom."""
+        if not self._client:
+            raise RuntimeError("WeCom bot not running")
+
+        chat_id = str(msg.chat_id)
+        frame = self._chat_frames.get(chat_id)
+
+        if not frame:
+            logger.warning("WeCom: no frame stored for chat_id {}, cannot send reply", chat_id)
+            return
+
+        content = msg.content or ""
+        if not content or content == "[empty message]":
+            return
+
+        try:
+            await self._client.reply(
+                frame,
+                {
+                    "msgtype": "text",
+                    "text": {"content": content},
+                },
+            )
+        except Exception as e:
+            logger.error("Error sending WeCom message: {}", e)
+            raise
+
+    async def _download_and_save_media(
+        self,
+        url: str,
+        aes_key: str,
+        media_type: str,
+        filename: str | None = None,
+    ) -> str | None:
+        """Download and decrypt WeCom media, save to disk. Returns local file path or None."""
+        try:
+            import aiohttp
+            from wecom_aibot_sdk.utils import decrypt_file
+
+            media_dir = get_media_dir("wecom")
+            ext_map = {"image": ".jpg", "voice": ".amr", "file": ""}
+            if filename:
+                ext = os.path.splitext(filename)[1] or ext_map.get(media_type, "")
+                save_name = filename
+            else:
+                import uuid
+                ext = ext_map.get(media_type, "")
+                save_name = f"{uuid.uuid4().hex}{ext}"
+
+            save_path = media_dir / save_name
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        logger.warning("WeCom media download failed: HTTP {}", resp.status)
+                        return None
+                    encrypted_data = await resp.read()
+
+            decrypted_data = decrypt_file(encrypted_data, aes_key)
+            save_path.write_bytes(decrypted_data)
+            return str(save_path)
+
+        except ImportError:
+            logger.warning("WeCom media download requires aiohttp: pip install aiohttp")
+            return None
+        except Exception as e:
+            logger.warning("WeCom media download/decrypt failed: {}", e)
+            return None
