@@ -229,8 +229,10 @@ class AzureOpenAIThinker(Thinker):
                             for tc_delta in delta["tool_calls"]:
                                 idx = tc_delta.get("index")
                                 if idx not in tool_call_chunks:
-                                    tool_call_chunks[idx] = {"id": tc_delta.get("id", ""), "name": "", "arguments": ""}
+                                    tool_call_chunks[idx] = {"id": "", "name": "", "arguments": ""}
                                 tc = tool_call_chunks[idx]
+                                if tc_delta.get("id"):
+                                    tc["id"] = tc_delta["id"]
                                 fn = tc_delta.get("function", {})
                                 if fn.get("name"):
                                     tc["name"] += fn["name"]

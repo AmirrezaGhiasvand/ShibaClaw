@@ -125,8 +125,10 @@ class CustomThinker(Thinker):
                     for tc_delta in delta.tool_calls:
                         idx = tc_delta.index
                         if idx not in tool_call_chunks:
-                            tool_call_chunks[idx] = {"id": tc_delta.id or "", "name": "", "arguments": ""}
+                            tool_call_chunks[idx] = {"id": "", "name": "", "arguments": ""}
                         tc = tool_call_chunks[idx]
+                        if getattr(tc_delta, "id", None):
+                            tc["id"] = tc_delta.id
                         if tc_delta.function:
                             if getattr(tc_delta.function, "name", None):
                                 tc["name"] += tc_delta.function.name
