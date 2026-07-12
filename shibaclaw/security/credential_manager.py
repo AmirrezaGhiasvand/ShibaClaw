@@ -45,27 +45,49 @@ def _get_store_dir() -> Path:
 def _load_or_create_key(key_path: Path) -> bytes:
     """Load an existing Fernet key or generate and persist a new one."""
     from cryptography.fernet import Fernet
+    import keyring
+
+    # Try OS Keyring first
+    try:
+        key_str = keyring.get_password("shibaclaw_vault", "fernet_key")
+        if key_str:
+            return key_str.encode("utf-8")
+    except Exception as exc:
+        logger.warning("CredentialManager: Failed to access OS keyring: {}", exc)
 
     if key_path.exists():
-        return key_path.read_bytes()
+        key = key_path.read_bytes()
+        # Migrate to OS Keyring
+        try:
+            keyring.set_password("shibaclaw_vault", "fernet_key", key.decode("utf-8"))
+            key_path.unlink()
+            logger.info("CredentialManager: Migrated encryption key to OS keyring and removed local key file.")
+        except Exception as exc:
+            logger.debug("CredentialManager: Could not migrate key to OS keyring: {}", exc)
+        return key
 
     key = Fernet.generate_key()
-    key_path.parent.mkdir(parents=True, exist_ok=True)
-    key_path.write_bytes(key)
-    if platform.system() != "Windows":
-        try:
-            os.chmod(key_path, 0o600)
-        except OSError:
-            pass
-    else:
-        try:
-            subprocess.run(
-                ["icacls", str(key_path), "/inheritance:r", "/grant:r", f"{os.getlogin()}:F"],
-                capture_output=True
-            )
-        except Exception:
-            pass
-    logger.debug("CredentialManager: generated new encryption key at {}", key_path)
+    try:
+        keyring.set_password("shibaclaw_vault", "fernet_key", key.decode("utf-8"))
+        logger.debug("CredentialManager: Generated new encryption key and stored in OS keyring.")
+    except Exception as exc:
+        logger.warning("CredentialManager: Failed to store key in OS keyring ({}), falling back to file.", exc)
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        key_path.write_bytes(key)
+        if platform.system() != "Windows":
+            try:
+                os.chmod(key_path, 0o600)
+            except OSError:
+                pass
+        else:
+            try:
+                subprocess.run(
+                    ["icacls", str(key_path), "/inheritance:r", "/grant:r", f"{os.getlogin()}:F"],
+                    capture_output=True
+                )
+            except Exception:
+                pass
+        logger.debug("CredentialManager: generated new encryption key at {}", key_path)
     return key
 
 

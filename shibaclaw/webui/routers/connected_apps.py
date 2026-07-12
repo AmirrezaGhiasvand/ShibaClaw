@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 from loguru import logger
 from starlette.requests import Request
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from shibaclaw.webui.agent_manager import agent_manager
@@ -303,7 +304,7 @@ async def save_backend_settings(request: Request) -> JSONResponse:
     try:
         from shibaclaw.security.credential_manager import get_credential_manager
         cm = get_credential_manager()
-        cm.set_secret("connected_apps", "klavis_api_key", api_key)
+        await run_in_threadpool(cm.set_secret, "connected_apps", "klavis_api_key", api_key)
     except Exception:
         if "__backend__" not in cfg_dict[CONNECTED_APPS_KEY]:
             cfg_dict[CONNECTED_APPS_KEY]["__backend__"] = {}

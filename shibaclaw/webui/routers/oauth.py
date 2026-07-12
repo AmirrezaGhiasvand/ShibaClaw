@@ -4,6 +4,7 @@ import os
 import uuid
 
 from starlette.requests import Request
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from shibaclaw.webui.agent_manager import agent_manager
@@ -140,7 +141,7 @@ async def api_oauth_disconnect(request: Request):
         from shibaclaw.config.manager import config_manager
         from shibaclaw.security.credential_manager import get_credential_manager
         cm = get_credential_manager()
-        cm.delete_secret("providers", "openrouter.api_key")
+        await run_in_threadpool(cm.delete_secret, "providers", "openrouter.api_key")
         config = config_manager.load_config()
         config.providers.openrouter.api_key = ""
         config_manager.save_config(config)

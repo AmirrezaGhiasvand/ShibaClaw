@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from loguru import logger
 from starlette.requests import Request
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from shibaclaw.webui.auth import _auth_enabled, _is_user_setup
@@ -20,7 +21,7 @@ async def api_auth_setup(request: Request):
 
     cm = get_credential_manager()
 
-    if cm.is_setup():
+    if await run_in_threadpool(cm.is_setup):
         return JSONResponse(
             {"error": "Admin user already configured."},
             status_code=409,
@@ -46,7 +47,7 @@ async def api_auth_setup(request: Request):
             status_code=400,
         )
 
-    ok = cm.setup_user(username, password)
+    ok = await run_in_threadpool(cm.setup_user, username, password)
     if not ok:
         return JSONResponse({"error": "Setup failed."}, status_code=500)
 
@@ -57,7 +58,7 @@ async def api_auth_setup(request: Request):
         logger.exception("Failed to migrate config secrets into vault")
 
     # Issue a session token immediately so the user doesn't need to login again
-    session_token = cm.create_session_token()
+    session_token = await run_in_threadpool(cm.create_session_token)
 
     logger.info("Admin user '{}' created via WebUI setup.", username)
     return JSONResponse({
@@ -77,7 +78,7 @@ async def api_auth_login(request: Request):
 
     cm = get_credential_manager()
 
-    if not cm.is_setup():
+    if not await run_in_threadpool(cm.is_setup):
         return JSONResponse(
             {"error": "Admin user not configured. Please run setup first."},
             status_code=403,
@@ -91,7 +92,7 @@ async def api_auth_login(request: Request):
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
 
-    if not cm.verify_password(username, password):
+    if not await run_in_threadpool(cm.verify_password, username, password):
         logger.warning("Failed login attempt for user '{}' from {}",
                         username, request.client.host if request.client else "unknown")
         return JSONResponse(
@@ -99,7 +100,7 @@ async def api_auth_login(request: Request):
             status_code=401,
         )
 
-    session_token = cm.create_session_token()
+    session_token = await run_in_threadpool(cm.create_session_token)
     logger.info("User '{}' logged in from {}.",
                 username, request.client.host if request.client else "unknown")
     return JSONResponse({
@@ -124,7 +125,7 @@ async def api_auth_verify(request: Request):
 
     # Try session token
     from shibaclaw.security.credential_manager import CredentialManager
-    if CredentialManager.verify_session_token(token):
+    if await run_in_threadpool(CredentialManager.verify_session_token, token):
         return JSONResponse({"valid": True, "auth_required": True})
 
     return JSONResponse({"valid": False, "auth_required": True})
@@ -152,7 +153,7 @@ async def api_auth_change_password(request: Request):
     from shibaclaw.security.credential_manager import get_credential_manager
 
     cm = get_credential_manager()
-    if not cm.is_setup():
+    if not await run_in_threadpool(cm.is_setup):
         return JSONResponse({"error": "Admin user not configured."}, status_code=400)
 
     try:
@@ -169,11 +170,11 @@ async def api_auth_change_password(request: Request):
     if len(new_password) < 6:
         return JSONResponse({"error": "New password must be at least 6 characters."}, status_code=400)
 
-    username = cm.get_admin_username()
+    username = await run_in_threadpool(cm.get_admin_username)
     if not username:
         return JSONResponse({"error": "Admin user not configured."}, status_code=400)
 
-    ok = cm.change_password(username, old_password, new_password)
+    ok = await run_in_threadpool(cm.change_password, username, old_password, new_password)
     if not ok:
         return JSONResponse({"error": "Incorrect old password."}, status_code=401)
 

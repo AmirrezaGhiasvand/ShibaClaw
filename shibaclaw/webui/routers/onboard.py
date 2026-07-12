@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from starlette.requests import Request
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from shibaclaw.webui.agent_manager import agent_manager
@@ -124,7 +125,7 @@ async def api_onboard_submit(request: Request):
         try:
             from shibaclaw.security.credential_manager import get_credential_manager
             cm = get_credential_manager()
-            cm.set_secret("providers", f"{provider_name}.api_key", api_key)
+            await run_in_threadpool(cm.set_secret, "providers", f"{provider_name}.api_key", api_key)
         except Exception:
             pass
 
