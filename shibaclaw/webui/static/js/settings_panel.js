@@ -981,25 +981,94 @@ function populateSettings(cfg) {
                 }
             }
         } else {
-            for (const [key, val] of Object.entries(cc)) {
-                if (key === "enabled" || key === "consentGranted" || key === "consent_granted") continue;
+            const compareConfigKeys = (a, b) => {
+                const getWeight = (key) => {
+                    const lower = key.toLowerCase();
+                    if (lower.includes("token") || lower.includes("secret") || lower.includes("password") || lower.includes("key")) {
+                        if (lower.includes("proxy")) return 90;
+                        return 10;
+                    }
+                    if (["mode", "webhookpath", "replyinthread", "replytomessage", "grouppolicy"].includes(lower)) {
+                        return 20;
+                    }
+                    if (lower.includes("allow")) {
+                        return 30;
+                    }
+                    if (lower === "dm" || lower === "mention") {
+                        return 40;
+                    }
+                    if (lower.includes("proxy")) {
+                        return 90;
+                    }
+                    return 50;
+                };
+
+                const wA = getWeight(a);
+                const wB = getWeight(b);
+                if (wA !== wB) return wA - wB;
+                return a.localeCompare(b);
+            };
+
+            const formatLabel = (keyPath) => {
+                const ABBR_MAP = {
+                    dm: "DM", imap: "IMAP", smtp: "SMTP", url: "URL", ip: "IP", api: "API", ssl: "SSL", tls: "TLS", id: "ID", tts: "TTS", stt: "STT"
+                };
+                return keyPath.split('.').map(part => {
+                    const words = part.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').split(/\s+/);
+                    return words.map(w => {
+                        const lower = w.toLowerCase();
+                        if (ABBR_MAP[lower]) return ABBR_MAP[lower];
+                        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+                    }).join(' ').trim();
+                }).join(' › ');
+            };
+
+            const buildFieldHtml = (keyPath, val) => {
                 let inputType = "text";
                 let valStr = "";
                 let originalType = typeof val;
-                if (Array.isArray(val)) { originalType = "array"; valStr = val.join(", "); }
-                else if (val !== null && originalType === "object") { originalType = "object"; valStr = JSON.stringify(val); }
-                else { if (val === null) originalType = "string"; valStr = val === null ? "" : String(val); }
 
-                if (originalType === "boolean") {
-                    fieldsHtml += `<div class="field-row"><label>${key}</label><label class="toggle"><input type="checkbox" class="ch-field" data-ch="${name}" data-key="${key}" data-type="boolean" ${val ? "checked" : ""}><span class="toggle-slider"></span></label></div>`;
-                    continue;
+                if (val === null) {
+                    originalType = "string";
+                    valStr = "";
+                } else if (Array.isArray(val)) {
+                    originalType = "array";
+                    valStr = val.join(", ");
+                } else if (originalType === "object") {
+                    if (keyPath === "groups" || keyPath.startsWith("groups.")) {
+                        originalType = "object";
+                        valStr = JSON.stringify(val);
+                    } else {
+                        let html = "";
+                        const subEntries = Object.entries(val).sort((a, b) => compareConfigKeys(a[0], b[0]));
+                        for (const [childKey, childVal] of subEntries) {
+                            html += buildFieldHtml(keyPath ? `${keyPath}.${childKey}` : childKey, childVal);
+                        }
+                        return html;
+                    }
+                } else {
+                    valStr = String(val);
                 }
 
-                const lowerKey = key.toLowerCase();
-                if (lowerKey.includes("token") || lowerKey.includes("secret") || lowerKey.includes("password")) inputType = "password";
+                if (originalType === "boolean") {
+                    const label = formatLabel(keyPath);
+                    return `<div class="field-row"><label>${label}</label><label class="toggle"><input type="checkbox" class="ch-field" data-ch="${name}" data-key="${keyPath}" data-type="boolean" ${val ? "checked" : ""}><span class="toggle-slider"></span></label></div>`;
+                }
+
+                const lowerKey = keyPath.toLowerCase();
+                if (lowerKey.includes("token") || lowerKey.includes("secret") || lowerKey.includes("password")) {
+                    inputType = "password";
+                }
 
                 const safeVal = String(valStr).replace(/"/g, '&quot;');
-                fieldsHtml += `<div class="field-row"><label>${key}</label><input type="${inputType}" class="form-input ch-field" data-ch="${name}" data-key="${key}" data-type="${originalType}" value="${safeVal}"></div>`;
+                const label = formatLabel(keyPath);
+                return `<div class="field-row"><label>${label}</label><input type="${inputType}" class="form-input ch-field" data-ch="${name}" data-key="${keyPath}" data-type="${originalType}" value="${safeVal}"></div>`;
+            };
+
+            const entries = Object.entries(cc).filter(([key]) => key !== "enabled" && key !== "consentGranted" && key !== "consent_granted");
+            entries.sort((a, b) => compareConfigKeys(a[0], b[0]));
+            for (const [key, val] of entries) {
+                fieldsHtml += buildFieldHtml(key, val);
             }
         }
         return fieldsHtml;
@@ -1225,7 +1294,14 @@ window.saveSettings = async function () {
         } else {
             val = el.value;
         }
-        patch.channels[name][key] = val;
+
+        const parts = key.split(".");
+        let current = patch.channels[name];
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!current[parts[i]]) current[parts[i]] = {};
+            current = current[parts[i]];
+        }
+        current[parts[parts.length - 1]] = val;
     });
 
     // Persist UI-only preferences locally so changes are immediate
