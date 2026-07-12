@@ -6,6 +6,9 @@
 - **🤖 Expanded Model Providers Ecosystem** — Added full, out-of-the-box support for the industry's leading models including **Anthropic (Claude)**, **xAI (Grok)**, **Qwen (Alibaba)**, **MiniMax**, and **Zhipu Z.AI**.
 - **Windows File Protection** — Integrated platform-specific fallback using `icacls` to enforce strict user-only access control on keys and vaults under Windows.
 
+### Changed
+- **🎨 Complete WebUI Visual Redesign** — Overhauled the entire user interface to establish a serious, professional, and product-focused aesthetic (inspired by Linear and Stripe). Systematically removed AI-generated "visual slop" including glassmorphism backgrounds (`backdrop-filter: blur`), decorative gradient text, excessive gold glows, and float animations. Replaced arbitrary side-stripe borders with clean, semantic background tints, unified the border-radius system under a strict token scale (4px/8px/12px), and optimized color contrast across dark themes to meet WCAG standards.
+
 ### Fixed
 - **Insecure Plaintext Fallbacks** — Refactored WebUI onboarding and Github OAuth settings flow to store retrieved tokens directly in the encrypted vault rather than failing to validate them against schema changes.
 - **Race Conditions in Vault Updates** — Wrapped all modifying credential operations under a `threading.Lock` to guarantee safety during concurrent WebUI updates.
