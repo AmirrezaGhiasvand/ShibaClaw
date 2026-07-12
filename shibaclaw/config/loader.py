@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pydantic
 from loguru import logger
@@ -30,39 +31,59 @@ def get_config_path() -> Path:
     return Path.home() / ".shibaclaw" / "config.json"
 
 
-def _scrub_secrets_from_dump(data: dict) -> dict:
+def _scrub_secrets_from_dump(data: dict, cm: Any = None) -> dict:
     """Zero-out sensitive plaintext fields in a model_dump dict before writing to disk.
 
+    This is a NO-OP when *cm* is None or when the vault is not set up
+    (``cm.is_setup()`` returns False).  In that case the caller is not
+    using the encrypted vault and secrets must remain in the JSON so
+    they are not lost.
+
+    When the vault IS active, _migrate_secrets_from_raw_dict() will have
+    already moved every non-empty secret into the vault and popped it
+    from *data* before this function is called.  This function therefore
+    just acts as a belt-and-suspenders safety net to zero out any
+    residual plaintext values that may have been re-introduced by a
+    model_dump after migration.
+
     Operates in-place on *data* and also returns it for convenience.
-    Only clears string values whose key name contains a known secret fragment;
-    empty strings and non-string values are left untouched.
     """
+    # Only scrub when the vault is active.
+    if cm is None:
+        return data
+    try:
+        if not cm.is_setup():
+            return data
+    except Exception:
+        return data
+
+    def _clear_secret_fields(cfg: dict) -> None:
+        for k in list(cfg):
+            if (
+                any(f in k.lower() for f in _SECRET_FRAGMENTS)
+                and isinstance(cfg[k], str)
+                and cfg[k]
+            ):
+                cfg[k] = ""
+
     # --- Provider API keys ---
     providers = data.get("providers", {})
     if isinstance(providers, dict):
         for provider_cfg in providers.values():
-            if not isinstance(provider_cfg, dict):
-                continue
-            for k in list(provider_cfg):
-                if any(f in k.lower() for f in _SECRET_FRAGMENTS) and isinstance(provider_cfg[k], str) and provider_cfg[k]:
-                    provider_cfg[k] = ""
+            if isinstance(provider_cfg, dict):
+                _clear_secret_fields(provider_cfg)
 
     # --- Channel secrets ---
     channels = data.get("channels", {})
     if isinstance(channels, dict):
         for ch_cfg in channels.values():
-            if not isinstance(ch_cfg, dict):
-                continue
-            for k in list(ch_cfg):
-                if any(f in k.lower() for f in _SECRET_FRAGMENTS) and isinstance(ch_cfg[k], str) and ch_cfg[k]:
-                    ch_cfg[k] = ""
+            if isinstance(ch_cfg, dict):
+                _clear_secret_fields(ch_cfg)
 
     # --- Audio API key ---
     audio = data.get("audio", {})
     if isinstance(audio, dict):
-        for k in list(audio):
-            if any(f in k.lower() for f in _SECRET_FRAGMENTS) and isinstance(audio[k], str) and audio[k]:
-                audio[k] = ""
+        _clear_secret_fields(audio)
 
     # --- Web search API key ---
     tools = data.get("tools", {})
@@ -71,9 +92,7 @@ def _scrub_secrets_from_dump(data: dict) -> dict:
         if isinstance(web, dict):
             search = web.get("search", {})
             if isinstance(search, dict):
-                for k in list(search):
-                    if any(f in k.lower() for f in _SECRET_FRAGMENTS) and isinstance(search[k], str) and search[k]:
-                        search[k] = ""
+                _clear_secret_fields(search)
 
         # --- MCP OAuth client secrets ---
         mcp_servers = tools.get("mcpServers", {}) or tools.get("mcp_servers", {})
@@ -83,11 +102,19 @@ def _scrub_secrets_from_dump(data: dict) -> dict:
                     continue
                 oauth = server_cfg.get("oauth", {})
                 if isinstance(oauth, dict):
-                    for k in list(oauth):
-                        if any(f in k.lower() for f in _SECRET_FRAGMENTS) and isinstance(oauth[k], str) and oauth[k]:
-                            oauth[k] = ""
+                    _clear_secret_fields(oauth)
 
     return data
+
+
+def _get_cm_if_active() -> Any:
+    """Return the credential manager if the vault is set up, else None."""
+    try:
+        from shibaclaw.security.credential_manager import get_credential_manager
+        cm = get_credential_manager()
+        return cm if cm.is_setup() else None
+    except Exception:
+        return None
 
 
 def load_config(config_path: Path | None = None) -> Config:
@@ -155,12 +182,13 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
     """
     Save configuration to file atomically.
 
-    Sensitive fields (tokens, passwords, API keys, secrets) are zeroed-out
-    before writing so that a save never reintroduces plaintext credentials
-    that were already migrated to the vault.
+    When the encrypted vault is active, sensitive fields that have already
+    been migrated are zeroed-out before writing so the JSON never contains
+    plaintext credentials.  When the vault is NOT active, secrets are
+    preserved in the JSON as-is (they are the only copy).
 
-    Writes to a temporary file first, then renames it over the target so that
-    a crash mid-write never leaves an empty or corrupt config.json.
+    Writes to a temporary file first, then renames it over the target so
+    that a crash mid-write never leaves an empty or corrupt config.json.
 
     Args:
         config: Configuration to save.
@@ -170,8 +198,9 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     data = config.model_dump(mode="json", by_alias=True)
-    # Strip any plaintext secrets before writing to disk.
-    _scrub_secrets_from_dump(data)
+    # Only scrub when the vault is active (secrets already migrated there).
+    cm = _get_cm_if_active()
+    _scrub_secrets_from_dump(data, cm)
     payload = json.dumps(data, indent=2, ensure_ascii=False)
 
     # Write to a sibling temp file then rename — atomic on all major OSes.
@@ -181,7 +210,6 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
             f.write(payload)
         os.replace(tmp_path, path)  # atomic rename
     except Exception:
-        # Clean up the temp file on failure; re-raise so caller can log.
         try:
             os.unlink(tmp_path)
         except OSError:
@@ -265,11 +293,7 @@ def _migrate_config(data: dict) -> dict:
     data["tools"] = tools
 
     # Migrate connectedApps: if present, ensure it is a plain dict (not None)
-    # and strip any keys that should not reach ConnectedAppsConfig validation.
-    # ConnectedAppsConfig uses extra="allow" so all keys are accepted;
-    # we only need to guarantee the field exists as a dict.
     if "connectedApps" not in data:
-        # try snake_case fallback (written by older versions)
         if "connected_apps" in data:
             data["connectedApps"] = data.pop("connected_apps")
     if data.get("connectedApps") is None:
@@ -278,7 +302,7 @@ def _migrate_config(data: dict) -> dict:
     return data
 
 
-def _migrate_secrets_from_raw_dict(data: dict, cm) -> bool:
+def _migrate_secrets_from_raw_dict(data: dict, cm: Any) -> bool:
     """Move plain-text secrets from a raw JSON dict into the vault and remove them."""
     migrated = False
 
@@ -288,8 +312,6 @@ def _migrate_secrets_from_raw_dict(data: dict, cm) -> bool:
         for provider_name, provider_cfg in providers.items():
             if not isinstance(provider_cfg, dict):
                 continue
-
-            # Check both camelCase and snake_case for the legacy key
             api_key = provider_cfg.pop("apiKey", None) or provider_cfg.pop("api_key", None)
             if api_key:
                 cm.set_secret("providers", f"{provider_name}.api_key", api_key)
