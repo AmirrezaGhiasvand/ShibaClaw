@@ -78,6 +78,7 @@ PUBLIC_PATHS = (
     "/api/auth/",
     "/api/file-get",
     "/api/oauth/openrouter/callback",
+    "/api/oauth/generic/",
 )
 
 

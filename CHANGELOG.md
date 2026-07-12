@@ -1,7 +1,9 @@
 ## [0.9.5] - 2026-07-12
 
 ### Added
-- **Encrypted Credentials Vault** — Built a new AES-128/256 symmetric encrypted vault (`credentials.enc` and `credentials.key`) using Fernet to secure all third-party integration secrets (API keys, bot tokens, email passwords) away from plaintext configuration files.
+- **🔐 Encrypted Credentials Vault (Major Security Update)** — We have fundamentally overhauled secret management. ShibaClaw now utilizes a robust AES-128/256 symmetric encrypted vault (`credentials.enc` and `credentials.key`) via Fernet. This entirely isolates all third-party integration secrets (API keys, bot tokens, email passwords) from plaintext config files, preventing accidental leaks.
+- **🌐 Native xAI & Advanced OAuth Flows** — Integrated real, native OAuth / Device Code flows directly into the WebUI. You can now authenticate seamlessly with **xAI / Grok** using official device code mechanisms, alongside GitHub Copilot, OpenAI Codex, and OpenRouter, completely removing the need to touch API keys manually.
+- **🤖 Expanded Model Providers Ecosystem** — Added full, out-of-the-box support for the industry's leading models including **Anthropic (Claude)**, **xAI (Grok)**, **Qwen (Alibaba)**, **MiniMax**, and **Zhipu Z.AI**.
 - **Windows File Protection** — Integrated platform-specific fallback using `icacls` to enforce strict user-only access control on keys and vaults under Windows.
 
 ### Fixed

@@ -298,6 +298,7 @@ async function loadOAuthPanel() {
         { name: "openrouter", label: "OpenRouter", icon: "route", desc: "Authenticate in the browser and store the returned OpenRouter API key directly in provider settings.", mode: "browser_redirect", cta: "Open OpenRouter" },
         { name: "github_copilot", label: "GitHub Copilot", icon: "code", desc: "Authenticate via GitHub device flow. Uses native OAuth orchestration." },
         { name: "openai_codex", label: "OpenAI Codex", icon: "psychology", desc: "Authenticate via OAuth CLI kit. Requires oauth-cli-kit package." },
+        { name: "xai", label: "xAI / Grok", icon: "public", desc: "xAI Subscription Sync OAuth flow." },
     ];
     list.innerHTML = "";
     for (const p of providers) {
@@ -322,6 +323,9 @@ async function loadOAuthPanel() {
                     <button class="btn-primary btn-sm" id="btn-oauth-login-${p.name}">
                         <span class="material-icons-round" style="font-size:14px;vertical-align:middle">login</span> Login
                     </button>
+                    <button class="btn-secondary btn-sm" id="btn-oauth-disconnect-${p.name}" style="display:none; color: #ef4444; border-color: rgba(239, 68, 68, 0.3)">
+                        <span class="material-icons-round" style="font-size:14px;vertical-align:middle">logout</span> Disconnect
+                    </button>
                 </div>
                 <div class="oauth-logs" id="oauth-logs-${p.name}" style="display:none;height:260px;overflow-y:scroll;overflow-x:hidden;background:var(--bg-primary);border-radius:6px;padding:12px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text-secondary);margin-top:4px;border:1px solid var(--border-color);white-space:pre-wrap;line-height:1.6"></div>
             </div>`;
@@ -343,15 +347,22 @@ async function loadOAuthPanel() {
                     return;
                 }
 
+                if (jd.status === "awaiting_paste" && jd.console_url) {
+                    try {
+                        window.open(jd.console_url, "_blank", "noopener,noreferrer");
+                    } catch { /* ignore popup blockers */ }
+                }
+
                 if (jd.user_code && jd.verification_uri) {
                     badge.textContent = "Awaiting auth..."; badge.className = "acc-badge off";
                     btn.innerHTML = '<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...';
                     const codeId = "oauth-code-" + Date.now();
                     logsEl.innerHTML =
-                        `<div style="text-align:center;padding:12px 0">` +
+                        `<div class="device-auth-ui" style="text-align:center;padding:12px 0">` +
+                        `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Sign in on the official site and enter the code below:</div>` +
                         `<div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap">` +
                         `<a href="${jd.verification_uri}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:var(--bg-primary);background:var(--shiba-gold);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">` +
-                        `<span class="material-icons-round" style="font-size:16px">open_in_new</span> Open GitHub` +
+                        `<span class="material-icons-round" style="font-size:16px">open_in_new</span> Open ${p.label}` +
                         `</a>` +
                         `<div style="position:relative;display:inline-flex;align-items:center;background:var(--bg-secondary);border:2px solid var(--shiba-gold);border-radius:10px;padding:6px 12px 6px 16px;gap:10px;cursor:pointer" onclick="navigator.clipboard.writeText('${jd.user_code}');const t=document.getElementById('${codeId}-tip');t.textContent='Copied!';setTimeout(()=>t.textContent='Click to copy',1500)" title="Click to copy code">` +
                         `<span style="font-size:26px;font-weight:700;letter-spacing:5px;color:var(--shiba-gold);font-family:'JetBrains Mono',monospace">${jd.user_code}</span>` +
@@ -363,6 +374,9 @@ async function loadOAuthPanel() {
                         `<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px">progress_activity</span> Waiting for authorization...` +
                         `</div>` +
                         `</div>`;
+                    try {
+                        window.open(jd.verification_uri, "_blank", "noopener,noreferrer");
+                    } catch { /* ignore popup blockers */ }
                 }
 
                 if (jd.auth_url && p.mode === "browser_redirect") {
@@ -370,7 +384,7 @@ async function loadOAuthPanel() {
                     btn.innerHTML = '<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px;vertical-align:middle">progress_activity</span> Waiting for auth...';
                     logsEl.innerHTML =
                         `<div class="oauth-browser-auth-ui" style="text-align:center;padding:12px 0">` +
-                        `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">OpenRouter will return here automatically when the authorization is complete.</div>` +
+                        `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Signing in on the official website...</div>` +
                         `<a href="${jd.auth_url}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:6px;color:var(--bg-primary);background:var(--shiba-gold);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">` +
                         `<span class="material-icons-round" style="font-size:16px">open_in_new</span> ${p.cta || 'Open login'}` +
                         `</a>` +
@@ -414,6 +428,41 @@ async function loadOAuthPanel() {
                             const logs = (job.logs || []).join("\n");
                             logsEl.innerHTML = `<div style="color:#f87171;padding:8px;white-space:pre-wrap">${logs}</div>`;
                             return true;
+                        }
+                        if (job.status === "awaiting_paste" && !logsEl.querySelector('.paste-auth-ui')) {
+                            badge.textContent = "Awaiting paste..."; badge.className = "acc-badge off";
+                            btn.innerHTML = '<span class="material-icons-round spin" style="display:inline-block;width:14px;height:14px;line-height:14px;font-size:14px;vertical-align:middle">progress_activity</span> Waiting...';
+                            const inputId = "paste-input-" + jd.job_id;
+                            const submitId = "paste-submit-" + jd.job_id;
+                            logsEl.innerHTML =
+                                `<div class="paste-auth-ui" style="text-align:center;padding:12px 0">` +
+                                `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.5">${job.instruction || 'Paste the token below:'}</div>` +
+                                `<a href="${job.console_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:var(--bg-primary);background:var(--shiba-gold);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .2s;margin-bottom:14px" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">` +
+                                `<span class="material-icons-round" style="font-size:16px">open_in_new</span> Open ${p.label}` +
+                                `</a>` +
+                                `<div style="display:flex;gap:8px;align-items:center;justify-content:center">` +
+                                `<input id="${inputId}" type="password" class="form-input" placeholder="Paste key/token here..." style="flex:1;max-width:400px;font-size:12px;font-family:'JetBrains Mono',monospace">` +
+                                `<button id="${submitId}" class="btn-primary btn-sm" style="white-space:nowrap">` +
+                                `<span class="material-icons-round" style="font-size:14px;vertical-align:middle">send</span> Submit` +
+                                `</button>` +
+                                `</div>` +
+                                `</div>`;
+                            setTimeout(() => {
+                                const submitBtn = document.getElementById(submitId);
+                                const inputEl = document.getElementById(inputId);
+                                if (submitBtn && inputEl) {
+                                    const doSubmit = async () => {
+                                        const code = inputEl.value.trim();
+                                        if (!code) return;
+                                        submitBtn.disabled = true; submitBtn.textContent = "Sending...";
+                                        try {
+                                            await authFetch("/api/oauth/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: jd.job_id, code }) });
+                                        } catch { submitBtn.disabled = false; submitBtn.textContent = "Submit"; }
+                                    };
+                                    submitBtn.addEventListener("click", doSubmit);
+                                    inputEl.addEventListener("keydown", e => { if (e.key === "Enter") doSubmit(); });
+                                }
+                            }, 50);
                         }
                         if (job.status === "awaiting_redirect" && job.auth_url && p.mode === "browser_redirect" && !logsEl.querySelector('.oauth-browser-auth-ui')) {
                             badge.textContent = "Awaiting auth..."; badge.className = "acc-badge off";
@@ -482,6 +531,31 @@ async function loadOAuthPanel() {
                 btn.disabled = false; btn.innerHTML = loginBtnHtml;
             }
         });
+        document.getElementById("btn-oauth-disconnect-" + p.name).addEventListener("click", async () => {
+            const btn = document.getElementById("btn-oauth-disconnect-" + p.name);
+            const logsEl = document.getElementById("oauth-logs-" + p.name);
+            btn.disabled = true;
+            btn.innerHTML = '<span class="material-icons-round spin" style="font-size:14px;vertical-align:middle">progress_activity</span> Disconnecting...';
+            try {
+                const resp = await authFetch("/api/oauth/disconnect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: p.name }) });
+                const jd = await resp.json();
+                if (jd.ok) {
+                    logsEl.style.display = "block";
+                    logsEl.innerHTML = `<div style="color:var(--text-primary);padding:8px">Disconnected successfully.</div>`;
+                    _refreshOAuthStatus();
+                } else {
+                    logsEl.style.display = "block";
+                    logsEl.textContent = "Error disconnecting: " + (jd.error || "Unknown");
+                    btn.disabled = false;
+                    btn.innerHTML = '<span class="material-icons-round" style="font-size:14px;vertical-align:middle">logout</span> Disconnect';
+                }
+            } catch (e) {
+                logsEl.style.display = "block";
+                logsEl.textContent = "Error: " + e;
+                btn.disabled = false;
+                btn.innerHTML = '<span class="material-icons-round" style="font-size:14px;vertical-align:middle">logout</span> Disconnect';
+            }
+        });
     }
 
     _refreshOAuthStatus();
@@ -493,10 +567,25 @@ async function _refreshOAuthStatus() {
         const data = await r.json();
         for (const p of (data.providers || [])) {
             const badge = document.getElementById("oauth-badge-" + p.name);
+            const btnLogin = document.getElementById("btn-oauth-login-" + p.name);
+            const btnDisconnect = document.getElementById("btn-oauth-disconnect-" + p.name);
+            
             if (!badge) continue;
             const ok = p.status === "configured";
             badge.textContent = ok ? "Configured" : (p.status === "missing_dependency" ? "Missing dep" : "Not configured");
             badge.className = "acc-badge " + (ok ? "on" : "off");
+            
+            if (btnLogin && btnDisconnect) {
+                if (ok) {
+                    btnLogin.style.display = "none";
+                    btnDisconnect.style.display = "inline-flex";
+                    btnDisconnect.disabled = false;
+                    btnDisconnect.innerHTML = '<span class="material-icons-round" style="font-size:14px;vertical-align:middle">logout</span> Disconnect';
+                } else {
+                    btnLogin.style.display = "inline-flex";
+                    btnDisconnect.style.display = "none";
+                }
+            }
         }
     } catch { /* silent */ }
 }

@@ -130,6 +130,40 @@ async def api_oauth_openrouter_callback(request: Request):
     return await finish_openrouter_oauth(request, agent_manager.oauth_jobs)
 
 
+async def api_oauth_disconnect(request: Request):
+    data = await request.json()
+    provider = data.get("provider")
+    if not provider:
+        return JSONResponse({"error": "No provider specified"}, status_code=400)
+
+    if provider == "openrouter":
+        from shibaclaw.config.manager import config_manager
+        from shibaclaw.security.credential_manager import get_credential_manager
+        cm = get_credential_manager()
+        cm.delete_secret("providers", "openrouter.api_key")
+        config = config_manager.load_config()
+        config.providers.openrouter.api_key = ""
+        config_manager.save_config(config)
+        await agent_manager.reload_config(config)
+    elif provider == "openai_codex":
+        try:
+            import os
+            from oauth_cli_kit.providers import OPENAI_CODEX_PROVIDER
+            from oauth_cli_kit.storage import FileTokenStorage
+            
+            storage = FileTokenStorage(token_filename=OPENAI_CODEX_PROVIDER.token_filename)
+            token_path = storage.get_token_path()
+            if os.path.exists(token_path):
+                os.remove(token_path)
+        except Exception:
+            pass
+    else:
+        from shibaclaw.security.oauth_store import OAuthTokenStore
+        store = OAuthTokenStore()
+        store.delete_token(provider)
+
+    return JSONResponse({"ok": True})
+
 async def api_oauth_job(request: Request):
     job_id = request.path_params.get("job_id")
     jobs = agent_manager.oauth_jobs

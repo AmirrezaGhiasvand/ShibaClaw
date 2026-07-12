@@ -244,10 +244,15 @@ from .routers.gateway import api_gateway_health, api_gateway_restart  # noqa: E4
 from .routers.heartbeat import api_heartbeat_status, api_heartbeat_trigger  # noqa: E402, F401  (legacy shim)
 from .routers.oauth import (  # noqa: E402, F401
     api_oauth_code,
+    api_oauth_disconnect,
     api_oauth_job,
     api_oauth_login,
     api_oauth_openrouter_callback,
     api_oauth_providers,
+)
+from .oauth_generic import (  # noqa: E402, F401
+    api_oauth_generic_authorize,
+    api_oauth_generic_callback,
 )
 from .routers.onboard import (  # noqa: E402, F401
     api_onboard_providers,

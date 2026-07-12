@@ -87,7 +87,8 @@ class ProviderConfig(Base):
 
         Resolution order:
         1. Encrypted vault lookup under ``providers/<provider_name>.api_key``.
-        2. Empty string (caller should then try env vars).
+        2. Encrypted vault lookup under ``oauth_tokens/<provider_name>.access_token``.
+        3. Empty string (caller should then try env vars).
         """
         if provider_name:
             try:
@@ -95,6 +96,13 @@ class ProviderConfig(Base):
                 vault_key = get_credential_manager().get_secret("providers", f"{provider_name}.api_key")
                 if vault_key and isinstance(vault_key, str):
                     return vault_key
+            except Exception:
+                pass
+            try:
+                from shibaclaw.security.credential_manager import get_credential_manager
+                vault_token = get_credential_manager().get_secret("oauth_tokens", provider_name)
+                if vault_token and isinstance(vault_token, dict) and vault_token.get("access_token"):
+                    return vault_token["access_token"]
             except Exception:
                 pass
         return ""
