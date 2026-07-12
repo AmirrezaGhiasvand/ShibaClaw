@@ -34,7 +34,9 @@ async def api_onboard_providers(request: Request):
         has_key = False
         if cfg:
             p = getattr(cfg.providers, name, None)
-            has_key = bool(p and p.api_key)
+            if p is not None:
+                # api_key field was removed from ProviderConfig; check vault.
+                has_key = bool(p.resolve_api_key(name))
 
         status = "available"
         if name in env_found:
@@ -115,11 +117,26 @@ async def api_onboard_submit(request: Request):
 
     cfg = agent_manager.config
 
-    # Apply provider key
+    # Apply provider key — ProviderConfig no longer has a plain api_key field;
+    # store it in the vault when available, otherwise patch the config dict
+    # so it gets written to disk by save_config below.
     if api_key:
-        p = getattr(cfg.providers, provider_name, None)
-        if p is not None:
-            p.api_key = api_key
+        try:
+            from shibaclaw.config.loader import _get_cm_if_active
+            cm = _get_cm_if_active()
+            if cm:
+                cm.set_secret("providers", f"{provider_name}.api_key", api_key)
+            else:
+                # No vault: write into the serialised config so save_config
+                # can persist it to disk in plain text.
+                from shibaclaw.config.schema import Config as _Cfg
+                cfg_dict = cfg.model_dump(mode="json", by_alias=False)
+                providers = cfg_dict.setdefault("providers", {})
+                providers.setdefault(provider_name, {})["api_key"] = api_key
+                cfg = _Cfg.model_validate(cfg_dict)
+                agent_manager.config = cfg
+        except Exception:
+            pass
 
     # Apply model and provider
     cfg.agents.defaults.model = model
@@ -173,8 +190,6 @@ async def api_onboard_submit(request: Request):
 
     agent_manager.load_latest_config()
 
-    # Trigger gateway restart in the background so the onboarding UI can finish
-    # immediately instead of waiting on the gateway restart roundtrip.
     async def _restart_gateway() -> None:
         try:
             await agent_manager.reset_agent()
