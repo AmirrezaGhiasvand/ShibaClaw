@@ -17,7 +17,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 from loguru import logger
 
@@ -90,7 +90,7 @@ class DesktopRuntime:
         self._start_server()
         return self.wait_ready(timeout=15.0)
 
-    def _restart_gateway(self, pre_start_hook: "typing.Callable[[], None] | None" = None) -> None:
+    def _restart_gateway(self, pre_start_hook: Callable[[], None] | None = None) -> None:
         """Stop then restart the gateway subprocess in place."""
         def _do_restart() -> None:
             logger.info("Restarting gateway subprocess…")

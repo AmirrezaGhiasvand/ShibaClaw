@@ -6,6 +6,7 @@ import asyncio
 from typing import Optional
 
 import typer
+from loguru import logger
 
 from shibaclaw import __logo__, __version__
 from shibaclaw.helpers.logging import setup_shiba_logging
