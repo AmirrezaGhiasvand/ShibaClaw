@@ -72,7 +72,7 @@ async def api_gateway_restart(request: Request):
                 asyncio.open_connection(host, port), timeout=2.0
             )
             try:
-                writer.write(f"POST /restart HTTP/1.0\r\nHost: gw\r\n\r\n".encode())
+                writer.write("POST /restart HTTP/1.0\r\nHost: gw\r\n\r\n".encode())
                 await writer.drain()
                 data = await asyncio.wait_for(reader.read(512), timeout=2.0)
             finally:

@@ -474,6 +474,12 @@ function renderMarkdown(text) {
                 return mentions[parseInt(p1, 10)];
             });
             
+            if (typeof DOMPurify !== "undefined") {
+                finalHtml = DOMPurify.sanitize(finalHtml, {
+                    ADD_ATTR: ['target']
+                });
+            }
+            
             return finalHtml;
         } catch (e) {
             console.error("Markdown parse error:", e);

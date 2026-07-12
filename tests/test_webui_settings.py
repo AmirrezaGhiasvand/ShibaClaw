@@ -48,7 +48,6 @@ def _get_request(path: str = "/api/models", query_string: str = "") -> Request:
 @pytest.mark.asyncio
 async def test_api_settings_post_replaces_deleted_mcp_servers(monkeypatch):
     import shibaclaw.cli.commands as commands_module
-    import shibaclaw.config.loader as loader_module
 
     original_config = agent_manager.config
     original_provider = agent_manager.provider

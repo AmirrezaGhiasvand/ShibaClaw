@@ -708,6 +708,10 @@
     margin: 0 0 8px;
 }
 
+.message-group.user .message-bubble p {
+    white-space: pre-wrap;
+}
+
 .message-bubble p:last-child {
     margin-bottom: 0;
 }

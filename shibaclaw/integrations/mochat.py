@@ -274,8 +274,10 @@ class MochatConfig(Base):
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "mochat.claw_token")
-                if val: return val
-        except Exception: pass
+                if val:
+                    return val
+        except Exception:
+            pass
         return self.claw_token
 
 

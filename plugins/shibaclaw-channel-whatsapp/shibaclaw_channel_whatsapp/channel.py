@@ -27,8 +27,10 @@ class WhatsAppConfig(Base):
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "whatsapp.bridge_token")
-                if val: return val
-        except Exception: pass
+                if val:
+                    return val
+        except Exception:
+            pass
         return self.bridge_token
 
 

@@ -222,8 +222,10 @@ class FeishuConfig(Base):
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "feishu.app_secret")
-                if val: return val
-        except Exception: pass
+                if val:
+                    return val
+        except Exception:
+            pass
         return self.app_secret
 
     def resolve_encrypt_key(self) -> str:
@@ -232,8 +234,10 @@ class FeishuConfig(Base):
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "feishu.encrypt_key")
-                if val: return val
-        except Exception: pass
+                if val:
+                    return val
+        except Exception:
+            pass
         return self.encrypt_key
 
     def resolve_verification_token(self) -> str:
@@ -242,8 +246,10 @@ class FeishuConfig(Base):
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "feishu.verification_token")
-                if val: return val
-        except Exception: pass
+                if val:
+                    return val
+        except Exception:
+            pass
         return self.verification_token
 
 

@@ -50,7 +50,6 @@ from .api import (
     api_oauth_code,
     api_oauth_disconnect,
     api_oauth_job,
-    api_oauth_login,
     api_oauth_openrouter_callback,
     api_oauth_providers,
     api_oauth_generic_authorize,
@@ -91,7 +90,7 @@ from .routers.knowledge import (
     api_knowledge_update,
     api_knowledge_upload,
 )
-from .auth import AuthMiddleware, _auth_enabled, mask_token
+from .auth import AuthMiddleware, _auth_enabled
 from .gateway_client import gateway_client
 from .routers.mcp_manager import (
     delete_mcp_server,

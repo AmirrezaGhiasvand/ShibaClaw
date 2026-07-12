@@ -1,4 +1,4 @@
-import sys, re
+import re
 
 path = r'c:\Users\Rikyz\.gemini\antigravity\scratch\shibaclaw_next\shibaclaw\agent\loop.py'
 with open(path, 'r', encoding='utf-8') as f:

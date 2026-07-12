@@ -259,7 +259,7 @@ async def _gateway_request(method: str, path: str) -> dict | None:
                 timeout=5.0,
             )
             try:
-                writer.write(f"{method} {path} HTTP/1.0\r\nHost: gw\r\n{auth_hdr}\r\n".encode())
+                writer.write(f"{method} {path} HTTP/1.0\r\nHost: gw\r\n\r\n".encode())
                 await writer.drain()
                 data = await asyncio.wait_for(reader.read(8192), timeout=10.0)
             finally:
@@ -324,7 +324,6 @@ async def _gateway_post(path: str, body: dict) -> dict | None:
                         f"Host: gw\r\n"
                         f"Content-Type: application/json\r\n"
                         f"Content-Length: {len(payload)}\r\n"
-                        f"{auth_hdr}"
                         f"\r\n"
                     ).encode()
                     + payload
@@ -376,14 +375,12 @@ async def _gateway_chat_stream(payload: dict):
             continue
 
         try:
-            auth_hdr = f"Authorization: Bearer {auth_token}\r\n" if auth_token else ""
             writer.write(
                 (
                     f"POST /api/chat HTTP/1.1\r\n"
                     f"Host: gw\r\n"
                     f"Content-Type: application/json\r\n"
                     f"Content-Length: {len(body)}\r\n"
-                    f"{auth_hdr}"
                     f"\r\n"
                 ).encode()
                 + body

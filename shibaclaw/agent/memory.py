@@ -523,7 +523,7 @@ class ScentKeeper:
                 )
 
             return True
-        except Exception as e:
+        except Exception:
             logger.exception("Proactive Learning failed")
             return False
 

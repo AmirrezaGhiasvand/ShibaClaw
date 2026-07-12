@@ -1,4 +1,3 @@
-import os
 
 path = r'c:\Users\Rikyz\.gemini\antigravity\scratch\shibaclaw_next\shibaclaw\cli\gateway.py'
 utils_path = r'c:\Users\Rikyz\.gemini\antigravity\scratch\shibaclaw_next\shibaclaw\cli\gateway_utils.py'

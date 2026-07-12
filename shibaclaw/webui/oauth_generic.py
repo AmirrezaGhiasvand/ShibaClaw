@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
 import secrets
 import urllib.parse
 import httpx
@@ -255,7 +254,6 @@ async def api_oauth_generic_callback(request: Request):
     jobs = agent_manager.oauth_jobs
 
     job_id = request.query_params.get("job_id", "")
-    provider = request.query_params.get("provider", "")
 
     # GET redirect from Google OAuth
     google_code = request.query_params.get("code")

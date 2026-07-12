@@ -1,6 +1,5 @@
-import os
+# ruff: noqa: E402
 import threading
-import time
 import pytest
 import sys
 from pathlib import Path

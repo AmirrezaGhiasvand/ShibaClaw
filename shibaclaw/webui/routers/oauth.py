@@ -91,7 +91,7 @@ async def api_oauth_providers(request: Request):
 async def api_oauth_login(request: Request):
     data = await request.json()
     provider = data.get("provider", "").replace("-", "_")
-    GENERIC_PROVIDERS = {
+    generic_providers = {
         "anthropic": "Anthropic / Claude",
         "google_gemini_cli": "Google Gemini CLI",
         "xai": "xAI / Grok",
@@ -99,7 +99,7 @@ async def api_oauth_login(request: Request):
         "minimax_portal": "MiniMax",
         "z_ai": "Z.AI / GLM",
     }
-    if provider not in ("openrouter", "github_copilot", "openai_codex") and provider not in GENERIC_PROVIDERS:
+    if provider not in ("openrouter", "github_copilot", "openai_codex") and provider not in generic_providers:
         return JSONResponse({"error": "Unknown provider"}, status_code=404)
 
     job_id = str(uuid.uuid4())[:8]
@@ -118,10 +118,10 @@ async def api_oauth_login(request: Request):
         from ..oauth_github import start_codex_oauth
 
         return await start_codex_oauth(job_id, jobs)
-    elif provider in GENERIC_PROVIDERS:
+    elif provider in generic_providers:
         from ..oauth_generic import start_generic_oauth
         
-        return await start_generic_oauth(request, job_id, jobs, provider, GENERIC_PROVIDERS[provider])
+        return await start_generic_oauth(request, job_id, jobs, provider, generic_providers[provider])
 
 
 async def api_oauth_openrouter_callback(request: Request):

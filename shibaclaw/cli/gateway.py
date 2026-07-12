@@ -9,8 +9,7 @@ import os
 import sys
 import time
 import uuid
-from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Optional
 
 import websockets
 from loguru import logger
@@ -23,13 +22,13 @@ from .utils import get_console
 
 
 from .gateway_utils import (
-    HeartbeatTarget,
-    resolve_webui_session_key,
-    resolve_automation_target,
-    deliver_scheduled_job_result,
-    select_heartbeat_target,
-    resolve_heartbeat_targets,
-    notify_webui_session,
+    HeartbeatTarget as HeartbeatTarget,
+    resolve_webui_session_key as resolve_webui_session_key,
+    resolve_automation_target as resolve_automation_target,
+    deliver_scheduled_job_result as deliver_scheduled_job_result,
+    select_heartbeat_target as select_heartbeat_target,
+    resolve_heartbeat_targets as resolve_heartbeat_targets,
+    notify_webui_session as notify_webui_session,
 )
 
 async def _cancel_all_tasks_gracefully() -> None:
