@@ -31,7 +31,7 @@
 ***
 
 > [!WARNING]
-> If you experience login issues with the WebUI post-update, please run `shibaclaw reset-admin` in your terminal/console to restore access.
+> If you experience login issues with the WebUI post v0.9.5 update, please run `shibaclaw reset-admin` in your terminal/console to restore access.
 
 <details open>
 <summary>📢 <b>Latest Release: v0.9.6</b> — Click to see what's new</summary>
