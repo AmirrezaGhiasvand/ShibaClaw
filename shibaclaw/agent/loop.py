@@ -917,7 +917,6 @@ class ShibaBrain:
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
             profile_id = session.metadata.get("profile_id") or None
-            await self.memory_consolidator.maybe_consolidate_by_tokens(session)
             self._set_tool_context(
                 channel,
                 chat_id,
@@ -1008,7 +1007,6 @@ class ShibaBrain:
                 chat_id=msg.chat_id,
                 content="\n".join(lines),
             )
-        await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
         self._set_tool_context(
             msg.channel,
