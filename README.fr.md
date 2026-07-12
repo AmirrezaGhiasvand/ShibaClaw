@@ -33,11 +33,14 @@
 ***
 
 <details open>
-<summary>📢 <b>Dernière version : v0.9.4</b> — Cliquez pour voir les nouveautés</summary>
+<summary>📢 <b>Dernière version : v0.9.5</b> — Cliquez pour voir les nouveautés</summary>
 
-- **Auto-update Linux bloqué sur v0.9.2** — Correction d'un bug où `_get_version()` renvoyait une version obsolète du manifeste même après une mise à jour pip/pipx réussie. La résolution de version préfère désormais les métadonnées du paquet installé, garantissant la convergence correcte.
+- **🔐 Coffre-fort d'identifiants chiffré** — Nous avons entièrement revu la sécurité. ShibaClaw utilise désormais un coffre-fort chiffré symétrique robuste AES-128/256 (`credentials.enc` et `credentials.key`) pour stocker en toute sécurité les clés API, les jetons de bot et les mots de passe. Il comprend une résolution prioritaire du coffre-fort, une sécurité des threads, une protection contre la corruption et des autorisations strictes au niveau du système d'exploitation (`0o600` sur Unix et `icacls` ACLs sur Windows).
+- **🌐 Flux OAuth & Device Code natifs** — Ajout de flux d'authentification natifs et fluides directement dans l'interface Web (WebUI). Vous pouvez désormais vous connecter sans effort via **xAI / Grok**, **GitHub Copilot**, **Google Gemini CLI**, **OpenAI Codex** et **OpenRouter** sans jamais manipuler de clé API !
+- **🤖 Nouveaux fournisseurs pris en charge** — Ajout d'intégrations complètes pour **Anthropic (Claude)**, **xAI (Grok)**, **Qwen (Alibaba)**, **MiniMax** et **Z.AI**, vous donnant un accès immédiat aux meilleurs modèles de pointe du marché.
+- **🛡️ Résolution de canaux renforcée** — Mises à jour complètes de la résolution pour Discord, DingTalk, Feishu, QQ, MoChat et le plugin de canal WhatsApp.
 
-Voir le [Changelog](./CHANGELOG.md) pour l'historique complet.
+Consultez le [Changelog](./CHANGELOG.md) pour l'historique complet des versions.
 
 </details>
 
