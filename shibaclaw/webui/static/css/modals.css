@@ -5,7 +5,7 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(4px);
-    z-index: 1000;
+    z-index: var(--z-modal-backdrop, 900);
     align-items: center;
     justify-content: center;
     animation: fadeIn var(--transition-fast) ease;
@@ -1072,7 +1072,7 @@ input[type="number"].form-input {
 }
 .update-badge {
     padding: 4px 12px;
-    border-radius: 20px;
+    border-radius: var(--radius-full);
     font-size: 0.85rem;
     font-weight: 600;
     font-family: 'JetBrains Mono', monospace;

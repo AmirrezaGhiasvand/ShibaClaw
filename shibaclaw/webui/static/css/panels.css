@@ -428,8 +428,9 @@
 }
 
 .auto-job-row.completed {
-    opacity: 0.7;
-    border-left: 3px solid var(--accent-green);
+    opacity: 0.85;
+    background: rgba(74, 222, 128, 0.05); /* very subtle green tint */
+    border-color: rgba(74, 222, 128, 0.15);
 }
 
 .auto-job-left {

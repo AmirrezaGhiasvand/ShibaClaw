@@ -121,20 +121,18 @@
             </div>
 
             <!-- Workspace Summary -->
-            <div class="sidebar-section workspace-summary-section" id="workspace-summary"
-                style="margin-top:auto; padding-top:16px; margin-bottom: 8px; border-top:1px solid var(--border-color); font-size:12px; color:var(--text-secondary);">
-                <div style="display:flex; align-items:center; margin-bottom:8px;" title="Active Channels">
-                    <div class="status-dot disconnected" id="summary-ch-dot" style="margin-right:8px;"></div>
-                    <span>Channel: <strong id="summary-channels" style="color:var(--text-primary)">--</strong></span>
+            <div class="sidebar-section workspace-summary-section" id="workspace-summary">
+                <div class="summary-row" title="Active Channels">
+                    <div class="status-dot disconnected" id="summary-ch-dot"></div>
+                    <span>Channel: <strong id="summary-channels">--</strong></span>
                 </div>
-                <div style="display:flex; align-items:center; margin-bottom:8px;" title="Configured Provider">
-                    <div class="status-dot disconnected" id="summary-provider-dot" style="margin-right:8px;"></div>
-                    <span>Provider: <strong id="summary-provider" style="color:var(--text-primary)">--</strong></span>
+                <div class="summary-row" title="Configured Provider">
+                    <div class="status-dot disconnected" id="summary-provider-dot"></div>
+                    <span>Provider: <strong id="summary-provider">--</strong></span>
                 </div>
-                <div style="display:flex; align-items:center;" title="Restrict agent to workspace directory">
-                    <div class="status-dot disconnected" id="summary-restrict-dot" style="margin-right:8px;"></div>
-                    <span>Restrict WP: <strong id="summary-restrict-badge"
-                            style="color:var(--text-primary)">--</strong></span>
+                <div class="summary-row" title="Restrict agent to workspace directory">
+                    <div class="status-dot disconnected" id="summary-restrict-dot"></div>
+                    <span>Restrict WP: <strong id="summary-restrict-badge">--</strong></span>
                 </div>
             </div>
 
@@ -222,7 +220,7 @@
             <div class="welcome-screen" id="welcome-screen">
                 <div class="welcome-content">
                     <img src="/static/shibaclaw_logo.webp" alt="ShibaClaw Logo" class="welcome-logo">
-                    <h2 class="welcome-title">Welcome to <span class="gradient-text">ShibaClaw</span></h2>
+                    <h2 class="welcome-title">Welcome to ShibaClaw</h2>
                     <p class="welcome-subtitle">A powerful AI agent that learns, acts, and secures your workflow.</p>
                     <div class="welcome-hints">
                         <button class="hint-card"
