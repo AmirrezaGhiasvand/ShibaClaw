@@ -155,7 +155,6 @@ async def api_oauth_disconnect(request: Request):
             pass
     elif provider == "openai_codex":
         try:
-            import os
             from oauth_cli_kit.providers import OPENAI_CODEX_PROVIDER
             from oauth_cli_kit.storage import FileTokenStorage
             

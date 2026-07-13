@@ -37,8 +37,17 @@ def is_rag_available() -> bool:
     import sys
 
     importlib.invalidate_caches()
-    spec = importlib.util.find_spec("langchain_core")
-    if spec is None or spec.origin is None or not os.path.exists(spec.origin):
+    spec_lc = importlib.util.find_spec("langchain")
+    spec_comm = importlib.util.find_spec("langchain_community")
+    spec_faiss = importlib.util.find_spec("faiss")
+
+    if (
+        spec_lc is None
+        or spec_lc.origin is None
+        or not os.path.exists(spec_lc.origin)
+        or spec_comm is None
+        or spec_faiss is None
+    ):
         for mod_name in list(sys.modules.keys()):
             if mod_name.startswith(("langchain", "faiss", "sentence_transformers")):
                 sys.modules.pop(mod_name, None)

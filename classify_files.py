@@ -1,7 +1,5 @@
 import subprocess
 import json
-import os
-from collections import defaultdict
 
 def run_cmd(cmd):
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -27,10 +25,14 @@ def get_role(f):
 
 files = []
 for f in git_files:
-    if f.startswith(('node_modules/', 'dist/', 'build/', '.next/', '.nuxt/', 'coverage/', '.venv/', 'venv/', '__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/')): continue
-    if f.startswith(('.git/', '.DS_Store')): continue
-    if f.endswith(('.lock', 'package-lock.json', 'yarn.lock', 'Pipfile.lock', 'poetry.lock', 'Cargo.lock', 'go.sum')): continue
-    if f.endswith(('.png', '.jpg', '.gif', '.pdf', '.wasm', '.zip', '.tar', '.gz', '.woff', '.ttf', '.webp')): continue
+    if f.startswith(('node_modules/', 'dist/', 'build/', '.next/', '.nuxt/', 'coverage/', '.venv/', 'venv/', '__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/')):
+        continue
+    if f.startswith(('.git/', '.DS_Store')):
+        continue
+    if f.endswith(('.lock', 'package-lock.json', 'yarn.lock', 'Pipfile.lock', 'poetry.lock', 'Cargo.lock', 'go.sum')):
+        continue
+    if f.endswith(('.png', '.jpg', '.gif', '.pdf', '.wasm', '.zip', '.tar', '.gz', '.woff', '.ttf', '.webp')):
+        continue
     
     role = get_role(f)
     if role == 'Exclude':
@@ -51,7 +53,7 @@ for f in git_files:
     try:
         with open(f, 'r', encoding='utf-8') as file:
             lines = sum(1 for _ in file)
-    except:
+    except Exception:
         pass
         
     files.append({'name': f, 'role': role, 'tier': tier, 'lines': lines})
