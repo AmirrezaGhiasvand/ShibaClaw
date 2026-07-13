@@ -22,11 +22,28 @@ class SkillsLoader:
     """
 
     _metadata_cache: dict[Path, tuple[float, dict | None]] = {}
+    _which_cache: dict[str, str | None] = {}
 
     def __init__(self, workspace: Path, builtin_skills_dir: Path | None = None):
         self.workspace = workspace
         self.workspace_skills = workspace / "skills"
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
+        self._summary_cache: tuple[float, str] | None = None
+
+    def _check_binary(self, b: str) -> bool:
+        if b not in SkillsLoader._which_cache:
+            SkillsLoader._which_cache[b] = shutil.which(b)
+        return bool(SkillsLoader._which_cache[b])
+
+    def _get_skills_max_mtime(self) -> float:
+        max_mtime = 0.0
+        for d in (self.workspace_skills, self.builtin_skills):
+            if d and d.exists():
+                try:
+                    max_mtime = max(max_mtime, d.stat().st_mtime)
+                except OSError:
+                    pass
+        return max_mtime
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
         """
@@ -117,6 +134,10 @@ class SkillsLoader:
         Returns:
             XML-formatted skills summary.
         """
+        max_mtime = self._get_skills_max_mtime()
+        if self._summary_cache and self._summary_cache[0] == max_mtime and max_mtime > 0:
+            return self._summary_cache[1]
+
         all_skills = self.list_skills(filter_unavailable=False)
         if not all_skills:
             return ""
@@ -146,14 +167,17 @@ class SkillsLoader:
             lines.append("  </skill>")
         lines.append("</skills>")
 
-        return "\n".join(lines)
+        res = "\n".join(lines)
+        if max_mtime > 0:
+            self._summary_cache = (max_mtime, res)
+        return res
 
     def _get_missing_requirements(self, skill_meta: dict) -> str:
         """Get a description of missing requirements."""
         missing = []
         requires = skill_meta.get("requires", {})
         for b in requires.get("bins", []):
-            if not shutil.which(b):
+            if not self._check_binary(b):
                 missing.append(f"CLI: {b}")
         for env in requires.get("env", []):
             if not os.environ.get(env):
@@ -205,7 +229,7 @@ class SkillsLoader:
 
         requires = skill_meta.get("requires", {})
         for b in requires.get("bins", []):
-            if not shutil.which(b):
+            if not self._check_binary(b):
                 return False
         for env in requires.get("env", []):
             if not os.environ.get(env):

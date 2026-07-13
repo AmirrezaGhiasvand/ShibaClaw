@@ -92,6 +92,8 @@ def _get_embeddings():
 class KnowledgeManager:
     """Manages cross-session Knowledge Bases using FAISS and LangChain."""
 
+    _faiss_cache: Dict[str, Any] = {}
+
     def __init__(self, workspace_path: Path):
         self.workspace_path = workspace_path
         self.base_dir = self.workspace_path / "memory" / "knowledge"
@@ -100,7 +102,7 @@ class KnowledgeManager:
             self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         else:
             self.text_splitter = None
-        self._faiss_cache = {}
+        self._faiss_cache = KnowledgeManager._faiss_cache
         
     @property
     def embeddings(self):
@@ -214,23 +216,26 @@ class KnowledgeManager:
             # Save to temporary directory first for atomic update
             vectorstore.save_local(str(temp_faiss_dir))
             
+            # Update cache and release file handles
+            cid = self._sanitize_id(collection_id)
+            self._faiss_cache.pop(cid, None)
+
             # Atomic rename (replace existing safely)
             if faiss_dir.exists():
                 backup_dir = coll_dir / "index_backup"
                 if backup_dir.exists():
                     shutil.rmtree(backup_dir, ignore_errors=True)
-                faiss_dir.rename(backup_dir)
                 try:
+                    faiss_dir.rename(backup_dir)
                     temp_faiss_dir.rename(faiss_dir)
-                except Exception as rename_err:
-                    backup_dir.rename(faiss_dir)
-                    raise rename_err
-                shutil.rmtree(backup_dir, ignore_errors=True)
+                    shutil.rmtree(backup_dir, ignore_errors=True)
+                except Exception:
+                    # Windows file lock fallback: replace existing directly
+                    shutil.rmtree(faiss_dir, ignore_errors=True)
+                    temp_faiss_dir.rename(faiss_dir)
             else:
                 temp_faiss_dir.rename(faiss_dir)
             
-            # Update cache
-            cid = self._sanitize_id(collection_id)
             self._faiss_cache[cid] = vectorstore
             
             # Update meta safely

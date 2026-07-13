@@ -119,6 +119,8 @@ class MCPManager:
 
     async def connect(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
+        if self._worker_task.done():
+            self._worker_task = asyncio.create_task(self._mcp_worker())
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
             return
         self._mcp_connecting = True
@@ -132,18 +134,14 @@ class MCPManager:
             self._mcp_connecting = False
 
     async def close(self) -> None:
-        """Close MCP connections."""
+        """Close MCP connections without terminating the worker loop."""
+        if self._worker_task.done():
+            self._worker_task = asyncio.create_task(self._mcp_worker())
         fut = asyncio.get_running_loop().create_future()
         await self._mcp_queue.put(("close", fut))
-        try:
-            await fut
-        finally:
-            if not self._worker_task.done():
-                self._worker_task.cancel()
-                try:
-                    await self._worker_task
-                except asyncio.CancelledError:
-                    pass
+        res = await fut
+        if isinstance(res, Exception):
+            raise res
 
     def reconfigure(self, new_servers: dict) -> bool:
         """Update MCP servers config. Returns True if changed."""

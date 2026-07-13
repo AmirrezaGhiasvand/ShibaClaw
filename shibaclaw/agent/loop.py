@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import re
 import time
-import weakref
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
@@ -109,10 +109,8 @@ class ShibaBrain:
             self.mcp.reconfigure(mcp_servers)
             
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
-        self._background_tasks: list[asyncio.Task] = []
-        self._session_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
-            weakref.WeakValueDictionary()
-        )
+        self._background_tasks: set[asyncio.Task] = set()
+        self._session_locks: dict[str, asyncio.Lock] = {}
         self._provider_cache: dict[str, Thinker] = {}
         self._steering_queues: dict[str, list[dict]] = {}
         self.memory_consolidator = PackMemory(
@@ -559,10 +557,14 @@ class ShibaBrain:
                         _heartbeat = 15  # seconds
                         _waited = 0
                         while not tool_future.done():
+                            remaining = self.tool_timeout - _waited
+                            if remaining <= 0 and self.tool_timeout > 0:
+                                break
+                            step_timeout = max(0.1, min(float(_heartbeat), float(remaining))) if self.tool_timeout > 0 else _heartbeat
                             try:
                                 await asyncio.wait_for(
                                     asyncio.shield(tool_future),
-                                    timeout=min(_heartbeat, self.tool_timeout - _waited) if self.tool_timeout > 0 else _heartbeat,
+                                    timeout=step_timeout,
                                 )
                             except asyncio.TimeoutError:
                                 _waited += _heartbeat
@@ -721,7 +723,9 @@ class ShibaBrain:
 
     async def _dispatch(self, msg: InboundMessage) -> None:
         """Process a message under the per-session lock."""
-        lock = self._session_locks.setdefault(msg.session_key, asyncio.Lock())
+        if msg.session_key not in self._session_locks:
+            self._session_locks[msg.session_key] = asyncio.Lock()
+        lock = self._session_locks[msg.session_key]
         async with lock:
             try:
                 response = await self._process_message(msg)
@@ -770,15 +774,18 @@ class ShibaBrain:
 
     def _schedule_background(self, coro) -> None:
         task = asyncio.create_task(coro)
-        self._background_tasks.append(task)
+        self._background_tasks.add(task)
         task.add_done_callback(lambda t: self._safe_remove_task(self._background_tasks, t))
 
     @staticmethod
-    def _safe_remove_task(tasks: list, task) -> None:
-        try:
-            tasks.remove(task)
-        except ValueError:
-            pass
+    def _safe_remove_task(tasks: Any, task) -> None:
+        if isinstance(tasks, set):
+            tasks.discard(task)
+        elif isinstance(tasks, list):
+            try:
+                tasks.remove(task)
+            except ValueError:
+                pass
 
     def stop(self) -> None:
         self._running = False
@@ -1002,7 +1009,7 @@ class ShibaBrain:
             if role == "assistant" and entry.get("tool_calls"):
                 mt = self.tools.get("message")
                 if mt and isinstance(mt, MessageTool) and mt.latest_resolved_media_map:
-                    entry["tool_calls"] = json.loads(json.dumps(entry["tool_calls"]))
+                    entry["tool_calls"] = copy.deepcopy(entry["tool_calls"])
                     for tc in entry["tool_calls"]:
                         if tc.get("function", {}).get("name") == "message":
                             try:

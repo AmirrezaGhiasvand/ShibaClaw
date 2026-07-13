@@ -160,13 +160,10 @@ class ScentKeeper:
             self.memory_file.write_text(content, encoding="utf-8")
 
     async def append_history(self, entry: str) -> None:
-        """Prepend new entry so most recent archives appear at the top."""
+        """Append new entry to HISTORY.md."""
         async with self._file_lock:
-            existing = ""
-            if self.history_file.exists():
-                existing = self.history_file.read_text(encoding="utf-8")
-            new_content = entry.rstrip() + "\n\n" + existing
-            self.history_file.write_text(new_content, encoding="utf-8")
+            with open(self.history_file, "a", encoding="utf-8") as f:
+                f.write(entry.rstrip() + "\n\n")
 
     def estimate_memory_tokens(self) -> int:
         """Estimate token count of the current MEMORY.md content."""
@@ -233,7 +230,7 @@ class ScentKeeper:
         out = io.StringIO()
         for message in messages:
             role = message.get("role", "unknown").upper()
-            ts = message.get("timestamp", "?")[:16]
+            ts = (message.get("timestamp") or "?")[:16]
             content = ScentKeeper._normalize_content(message.get("content"))
             
             tool_suffix = ""
@@ -573,10 +570,12 @@ class PackMemory:
         self.memory_compact_threshold_tokens = memory_compact_threshold_tokens
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
-        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def get_lock(self, session_key: str) -> asyncio.Lock:
-        return self._locks.setdefault(session_key, asyncio.Lock())
+        if session_key not in self._locks:
+            self._locks[session_key] = asyncio.Lock()
+        return self._locks[session_key]
 
     async def consolidate_messages(self, messages: list[dict[str, object]]) -> bool:
         return await self.store.consolidate(messages, self.provider, self.consolidation_model)

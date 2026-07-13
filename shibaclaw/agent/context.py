@@ -3,6 +3,7 @@
 import base64
 import mimetypes
 import platform
+import re
 import secrets
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from typing import Any
 from shibaclaw.agent.memory import ScentKeeper
 from shibaclaw.agent.skills import SkillsLoader
 from shibaclaw.helpers.helpers import build_assistant_message, current_time_str, detect_image_mime
+
+_THINK_RE = re.compile(r"<think>.*?</think>\n*", flags=re.DOTALL)
 
 
 class ScentBuilder:
@@ -350,11 +353,10 @@ Root: {workspace_path}
         """
         user_content = self._build_user_content(current_message, media)
 
-        import re
         def _strip_think(text: str | None) -> str | None:
             if not text:
                 return text
-            return re.sub(r"<think>.*?</think>\n*", "", text, flags=re.DOTALL).strip()
+            return _THINK_RE.sub("", text).strip()
 
         # We strip <think> from assistant history messages to prevent Context Pollution (token exhaustion)
         # while keeping the original <think> blocks in the database for the WebUI.

@@ -268,10 +268,14 @@ class ExecTool(Tool):
             try:
                 elapsed = 0
                 while process.returncode is None:
+                    remaining = effective_timeout - elapsed
+                    if remaining <= 0:
+                        break
+                    step_timeout = max(0.1, min(float(self._PROGRESS_INTERVAL), float(remaining)))
                     try:
                         await asyncio.wait_for(
                             asyncio.shield(process.wait()),
-                            timeout=min(self._PROGRESS_INTERVAL, effective_timeout - elapsed),
+                            timeout=step_timeout,
                         )
                     except asyncio.TimeoutError:
                         elapsed += self._PROGRESS_INTERVAL

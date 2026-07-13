@@ -137,6 +137,11 @@ class SubagentManager:
         origin: dict[str, str],
     ) -> None:
         """Inner implementation of subagent execution."""
+        if not self.provider:
+            await self._announce_result(
+                task_id, label, task, "No AI provider configured.", origin, "error"
+            )
+            return
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = SkillVault()

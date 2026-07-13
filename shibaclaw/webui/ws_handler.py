@@ -58,6 +58,9 @@ def _unsubscribe_ws(ws_id: str) -> None:
     subscribers.discard(ws_id)
     if not subscribers:
         _session_subscribers.pop(session_key, None)
+        if session_key not in _session_tasks:
+            _session_queues.pop(session_key, None)
+            processing_state.pop(session_key, None)
 
 
 def _subscribe_ws_to_session(ws_id: str, session_key: str) -> None:
@@ -504,12 +507,13 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict[str, Any]) 
             )
         finally:
             q = _session_queues.get(session_key)
-            if q:
+            if q and len(q) > 0:
                 next_msg = q.popleft()
                 _session_tasks[session_key] = asyncio.create_task(run_agent_job(next_msg))
             else:
                 _session_tasks.pop(session_key, None)
                 processing_state.pop(session_key, None)
+                _session_queues.pop(session_key, None)
                 await _emit_session_status_all(session_key)
 
     _session_tasks[session_key] = asyncio.create_task(run_agent_job(msg))

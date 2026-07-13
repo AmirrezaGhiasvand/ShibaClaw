@@ -37,13 +37,18 @@ class MessageBus:
         if self._rate_limit <= 0:
             return False
         now = time.monotonic()
-        window = self._inbound_timestamps[sender_id]
-        # Evict entries older than 60 s
+        window = self._inbound_timestamps.get(sender_id, [])
         cutoff = now - 60.0
-        self._inbound_timestamps[sender_id] = window = [ts for ts in window if ts > cutoff]
+        window = [ts for ts in window if ts > cutoff]
+        if not window:
+            self._inbound_timestamps.pop(sender_id, None)
+        else:
+            self._inbound_timestamps[sender_id] = window
         if len(window) >= self._rate_limit:
             return True
-        window.append(now)
+        if sender_id not in self._inbound_timestamps:
+            self._inbound_timestamps[sender_id] = []
+        self._inbound_timestamps[sender_id].append(now)
         return False
 
     async def publish_inbound(self, msg: InboundMessage) -> None:

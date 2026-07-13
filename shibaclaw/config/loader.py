@@ -148,6 +148,9 @@ def _get_cm_if_active() -> Any:
         return None
 
 
+_CONFIG_CACHE: dict[tuple[str, int], Config] = {}
+
+
 def load_config(config_path: Path | None = None) -> Config:
     """
     Load configuration from file or create default.
@@ -158,10 +161,18 @@ def load_config(config_path: Path | None = None) -> Config:
     Returns:
         Loaded configuration object.
     """
-    global _plugins_onboarded
-    path = config_path or get_config_path()
+    global _plugins_onboarded, _CONFIG_CACHE
+    path = (config_path or get_config_path()).resolve()
 
-    if not path.exists():
+    if path.exists():
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+            cache_key = (str(path), mtime_ns)
+            if cache_key in _CONFIG_CACHE:
+                return _CONFIG_CACHE[cache_key]
+        except OSError:
+            pass
+    else:
         logger.info(f"Creating default configuration at {path}")
         default_cfg = Config()
         save_config(default_cfg, path)
@@ -202,6 +213,11 @@ def load_config(config_path: Path | None = None) -> Config:
             logger.debug("[config] auto-migration of secrets to vault failed", exc_info=True)
 
         cfg = Config.model_validate(data)
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+            _CONFIG_CACHE[(str(path), mtime_ns)] = cfg
+        except OSError:
+            pass
         return cfg
     except (json.JSONDecodeError, ValueError, pydantic.ValidationError) as e:
         logger.warning(f"Failed to load config from {path}: {e}")
@@ -223,8 +239,10 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
 
     Args:
         config: Configuration to save.
-        config_path: Optional path to save to. Uses default if not provided.
+        config_path: Optional path to config file. Uses default if not provided.
     """
+    global _CONFIG_CACHE
+    _CONFIG_CACHE.clear()
     path = config_path or get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 

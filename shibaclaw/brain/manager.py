@@ -1,6 +1,7 @@
 """Brain management for conversation history — the memory of the Shiba."""
 
 import json
+import os
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -213,6 +214,7 @@ class PackManager:
         """Save a session to disk."""
         path = self._get_session_path(session.key)
         key = session.key
+        path.parent.mkdir(parents=True, exist_ok=True)
 
         can_append = (
             path.exists()
@@ -232,7 +234,8 @@ class PackManager:
                             f.write(json.dumps(msg, ensure_ascii=False) + "\n")
                 self._cache_persisted_messages_count[key] = len(session.messages)
             else:
-                with open(path, "w", encoding="utf-8") as f:
+                tmp_path = path.with_suffix(".jsonl.tmp")
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     metadata_line = {
                         "_type": "metadata",
                         "key": session.key,
@@ -245,6 +248,8 @@ class PackManager:
                     f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
                     for msg in session.messages:
                         f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+                os.replace(tmp_path, path)
 
                 self._cache_persisted_messages_count[key] = len(session.messages)
                 self._cache_persisted_last_consolidated[key] = session.last_consolidated
