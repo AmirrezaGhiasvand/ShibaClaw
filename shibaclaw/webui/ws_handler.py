@@ -475,7 +475,8 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict[str, Any]) 
                         },
                     )
                 elif event.get("t") == "r":
-                    response_content = event.get("content", "")
+                    if not response_content:
+                        response_content = event.get("content", "")
                     response_media = event.get("media", [])
                     finish_reason = event.get("finish_reason")
                 elif event.get("t") == "e":
@@ -690,25 +691,22 @@ async def deliver_to_browsers(
         payload["metadata"] = metadata
     delivered = 0
 
-    # If session_key is empty, broadcast to all connected clients
-    if session_key == "":
-        for ws in _ws_clients.values():
+    # Normalize target session key
+    clean_target = session_key.replace("webui:", "").strip() if session_key else ""
+    raw = json.dumps(payload)
+
+    # Deliver to all matching WebSocket clients
+    for ws_id, ws in list(_ws_clients.items()):
+        client_session = sessions.get(ws_id, {}).get("session_key", "")
+        clean_client = client_session.replace("webui:", "").strip() if client_session else ""
+
+        if session_key == "" or clean_client == clean_target or client_session == session_key:
             try:
-                await ws.send_text(json.dumps(payload))
+                await ws.send_text(raw)
                 delivered += 1
             except Exception as _e:
-                logger.debug("Ignored error: {}", _e)
-    else:
-        # Original behavior: deliver only to matching session
-        raw = json.dumps(payload)
-        for ws_id in list(_session_subscribers.get(session_key, ())):
-            ws = _ws_clients.get(ws_id)
-            if ws:
-                try:
-                    await ws.send_text(raw)
-                    delivered += 1
-                except Exception as _e:
-                    logger.debug("Ignored error: {}", _e)
+                logger.debug("Ignored error delivering WS payload: {}", _e)
+
     return delivered
 
 

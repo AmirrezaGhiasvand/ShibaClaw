@@ -134,8 +134,9 @@ async def test_cron_tool_integration(tmp_path):
     jobs = service.list_jobs()
     assert len(jobs) == 1
     assert jobs[0].payload.message == "Test reminder"
-    assert jobs[0].payload.channel == "test_channel"
-    assert jobs[0].payload.to == "test_chat"
+    # Now defaults to isolated background session
+    assert jobs[0].payload.channel == "automation"
+    assert jobs[0].payload.to == "background"
 
     list_result = await tool.execute(action="list")
     assert "Test reminder" in list_result
@@ -144,6 +145,12 @@ async def test_cron_tool_integration(tmp_path):
     remove_result = await tool.execute(action="remove", job_id=job_id)
     assert f"Removed job {job_id}" in remove_result
     assert len(service.list_jobs()) == 0
+
+    # Test explicit target channel
+    await tool.execute(action="add", message="Delivery", every_seconds=10, target_channel="tg", target_chat_id="123")
+    jobs = service.list_jobs()
+    assert jobs[0].payload.channel == "tg"
+    assert jobs[0].payload.to == "123"
 
 
 def test_automation_service_legacy_migration(tmp_path):

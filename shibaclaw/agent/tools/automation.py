@@ -73,6 +73,14 @@ class AutomationTool(Tool):
                     "description": "Whether the job should be deleted after its first successful or failed execution",
                 },
                 "job_id": {"type": "string", "description": "Job ID (for remove)"},
+                "target_channel": {
+                    "type": "string",
+                    "description": "Optional: channel to send the output to (e.g. 'telegram'). If omitted, the automation runs in an isolated background session without bothering the user."
+                },
+                "target_chat_id": {
+                    "type": "string",
+                    "description": "Optional: chat_id to send the output to (requires target_channel)."
+                },
             },
             "required": ["action"],
         }
@@ -87,12 +95,14 @@ class AutomationTool(Tool):
         at: str | None = None,
         delete_after_run: bool | None = None,
         job_id: str | None = None,
+        target_channel: str | None = None,
+        target_chat_id: str | None = None,
         **kwargs: Any,
     ) -> str:
         if action == "add":
             if self._in_automation_context.get():
                 return "Error: cannot schedule new jobs from within an automation job execution"
-            return self._add_job(message, every_seconds, cron_expr, tz, at, delete_after_run)
+            return self._add_job(message, every_seconds, cron_expr, tz, at, delete_after_run, target_channel, target_chat_id)
         elif action == "list":
             return self._list_jobs()
         elif action == "remove":
@@ -107,11 +117,11 @@ class AutomationTool(Tool):
         tz: str | None,
         at: str | None,
         delete_after_run: bool | None = None,
+        target_channel: str | None = None,
+        target_chat_id: str | None = None,
     ) -> str:
         if not message:
             return "Error: message is required for add"
-        if not self._channel or not self._chat_id:
-            return "Error: no session context (channel/chat_id)"
         if tz and not cron_expr:
             return "Error: tz can only be used with cron_expr"
         if tz:
@@ -146,13 +156,25 @@ class AutomationTool(Tool):
             # Default: one-shot jobs are deleted, recurring ones are kept
             delete_after = (schedule.kind == "at")
 
+        # Determine isolation vs delivery
+        if target_channel:
+            deliver = True
+            job_channel = target_channel
+            job_to = target_chat_id or self._chat_id
+            job_session_key = f"{job_channel}:{job_to}"
+        else:
+            deliver = False
+            job_channel = "automation"
+            job_to = "background"
+            job_session_key = None  # Will be auto-generated as automation:{job.id}
+
         payload = AutomationPayload(
             kind="scheduled",
             message=message,
-            deliver=True,
-            channel=self._channel,
-            to=self._chat_id,
-            session_key=self._session_key,
+            deliver=deliver,
+            channel=job_channel,
+            to=job_to,
+            session_key=job_session_key,
         )
 
         job = self._automation.add_job(
@@ -161,7 +183,7 @@ class AutomationTool(Tool):
             payload=payload,
             delete_after_run=delete_after,
         )
-        return f"Created job '{job.name}' (id: {job.id})"
+        return f"Created job '{job.name}' (id: {job.id}). It will run in an isolated background session."
 
     @staticmethod
     def _format_timing(schedule: AutomationSchedule) -> str:

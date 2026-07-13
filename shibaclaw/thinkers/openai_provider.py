@@ -121,7 +121,12 @@ class OpenAIThinker(Thinker):
 
     def _resolve_model(self, model: str) -> str:
         """Resolve model name by applying strip prefixes if needed."""
-        model = self._strip_provider_prefix(model, getattr(self, "_provider_name", None))
+        # Get provider spec if we have a known provider
+        provider_spec = find_by_name(self._provider_name) if self._provider_name else None
+        
+        # Strip provider prefix UNLESS the provider explicitly preserves it
+        if not (provider_spec and getattr(provider_spec, "preserve_model_prefix", False)):
+            model = self._strip_provider_prefix(model, getattr(self, "_provider_name", None))
 
         # For pure OpenAI client, we don't need litellm_prefix logic!
         # Instead, we just need to respect `strip_model_prefix` if the gateway demands bare models.
@@ -132,7 +137,7 @@ class OpenAIThinker(Thinker):
         # For non-gateway standard usage (e.g. hitting OpenAI directly)
         elif not self._gateway:
             spec = find_by_model(model)
-            if spec and "/" in model and model.startswith(f"{spec.name}/"):
+            if spec and not getattr(spec, "preserve_model_prefix", False) and "/" in model and model.startswith(f"{spec.name}/"):
                 # Strip prefix if it exists to pass bare model name to OpenAI
                 model = model.split("/", 1)[1]
 

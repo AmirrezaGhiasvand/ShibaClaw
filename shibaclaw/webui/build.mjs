@@ -27,7 +27,8 @@ const jsFiles = [
     'frontend/select_session.js',
     'frontend/js/mcp_manager.js',
     'frontend/js/connected_apps.js',
-    'frontend/js/mentions.js'
+    'frontend/js/mentions.js',
+    'frontend/js/subagent_ui.js'
 ];
 
 // Combine JS files

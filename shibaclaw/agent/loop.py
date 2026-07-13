@@ -8,7 +8,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
 
@@ -101,6 +101,7 @@ class ShibaBrain:
             exec_config=self.exec_config,
             restrict_to_workspace=restrict_to_workspace,
             timeout=subagent_timeout,
+            agent_runner=self,
         )
 
         self._running = False
@@ -332,25 +333,17 @@ class ShibaBrain:
         return False
 
     def _set_tool_context(
-        self,
-        channel: str,
-        chat_id: str,
-        message_id: str | None = None,
-        session_key: str | None = None,
+        self, channel: str, chat_id: str, message_id: str | None, session_key: str | None = None,
+        model: str | None = None, provider: Any | None = None,
     ) -> None:
-        """Update context for all tools that need routing info."""
-        logger.debug(
-            "🛠️ Setting tool context: channel={}, chat_id={}, message_id={}",
-            channel,
-            chat_id,
-            message_id,
-        )
-        for name in ("message", "spawn", "automation"):
+        """Update tool context for the current message and session."""
+        for name in ("message", "spawn", "automation", "think"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
-                    logger.debug("✅ Updating tool: {}", name)
                     if name == "message":
                         tool.set_context(channel, chat_id, message_id)
+                    elif name == "spawn":
+                        tool.set_context(channel, chat_id, session_key, model=model, provider=provider)
                     else:
                         tool.set_context(channel, chat_id, session_key)
 
@@ -409,6 +402,12 @@ class ShibaBrain:
         active_model = model or self.model
         active_provider = self._resolve_provider_for_model(active_model)
 
+        # Update context again just in case the provider needed to be resolved
+        # and wasn't available when _set_tool_context was initially called
+        self._set_tool_context(channel, chat_id, metadata.get("message_id") if metadata else None, session_key, model=active_model, provider=active_provider)
+
+        start_time = datetime.now(timezone.utc)
+
         if not active_provider:
             return "No provider is configured for the selected model.", tools_used, messages
 
@@ -417,6 +416,52 @@ class ShibaBrain:
 
         if session_key:
             self._steering_queues[session_key] = []
+
+        active_kbs = None
+        try:
+            from shibaclaw.agent.knowledge_manager import KnowledgeManager, RAG_AVAILABLE
+            import asyncio
+            
+            if RAG_AVAILABLE:
+                km = KnowledgeManager(self.context.workspace)
+                all_collections = await asyncio.to_thread(km.list_collections)
+            
+            session_kb_ids = []
+            if chat_id:
+                from shibaclaw.webui.agent_manager import agent_manager
+                if agent_manager.pm:
+                    sess = agent_manager.pm.get_or_create(chat_id)
+                    session_kb_ids = sess.metadata.get("knowledge_bases", [])
+            
+            mentioned_kb_names = [k.lower() for k in (metadata.get("mentioned_kbs", []) if metadata else [])]
+
+            if all_collections and (session_kb_ids or mentioned_kb_names):
+                active_kbs = []
+                new_session_kb_ids = list(session_kb_ids)
+                changed = False
+                
+                for col in all_collections:
+                    col_id = col.get("id", "")
+                    col_name = col.get("name", "")
+                    
+                    is_mentioned = col_name.lower() in mentioned_kb_names
+                    if is_mentioned and col_id not in new_session_kb_ids:
+                        new_session_kb_ids.append(col_id)
+                        changed = True
+                        
+                    if col_id in new_session_kb_ids:
+                        col_desc = col.get("description", "")
+                        desc_part = f" - Desc: {col_desc}" if col_desc else ""
+                        active_kbs.append(f"ID: {col_id} (Name: '{col_name}'){desc_part}")
+                        
+                if changed and chat_id:
+                    from shibaclaw.webui.agent_manager import agent_manager
+                    if agent_manager.pm:
+                        sess = agent_manager.pm.get_or_create(chat_id)
+                        sess.metadata["knowledge_bases"] = new_session_kb_ids
+                        agent_manager.pm.save(sess)
+        except Exception:
+            pass
 
         while self.max_iterations == 0 or iteration < self.max_iterations:
             if session_key and session_key in self._steering_queues:
@@ -458,52 +503,6 @@ class ShibaBrain:
                 )
                 break
             iteration += 1
-
-            active_kbs = None
-            try:
-                from shibaclaw.agent.knowledge_manager import KnowledgeManager, RAG_AVAILABLE
-                import asyncio
-                
-                if RAG_AVAILABLE:
-                    km = KnowledgeManager(self.context.workspace)
-                    all_collections = await asyncio.to_thread(km.list_collections)
-                
-                session_kb_ids = []
-                if chat_id:
-                    from shibaclaw.webui.agent_manager import agent_manager
-                    if agent_manager.pm:
-                        sess = agent_manager.pm.get_or_create(chat_id)
-                        session_kb_ids = sess.metadata.get("knowledge_bases", [])
-                
-                mentioned_kb_names = [k.lower() for k in (metadata.get("mentioned_kbs", []) if metadata else [])]
-
-                if all_collections and (session_kb_ids or mentioned_kb_names):
-                    active_kbs = []
-                    new_session_kb_ids = list(session_kb_ids)
-                    changed = False
-                    
-                    for col in all_collections:
-                        col_id = col.get("id", "")
-                        col_name = col.get("name", "")
-                        
-                        is_mentioned = col_name.lower() in mentioned_kb_names
-                        if is_mentioned and col_id not in new_session_kb_ids:
-                            new_session_kb_ids.append(col_id)
-                            changed = True
-                            
-                        if col_id in new_session_kb_ids:
-                            col_desc = col.get("description", "")
-                            desc_part = f" - Desc: {col_desc}" if col_desc else ""
-                            active_kbs.append(f"ID: {col_id} (Name: '{col_name}'){desc_part}")
-                            
-                    if changed and chat_id:
-                        from shibaclaw.webui.agent_manager import agent_manager
-                        if agent_manager.pm:
-                            sess = agent_manager.pm.get_or_create(chat_id)
-                            sess.metadata["knowledge_bases"] = new_session_kb_ids
-                            agent_manager.pm.save(sess)
-            except Exception:
-                pass
 
             live_block = self.context.build_runtime_block(
                 channel=channel,
@@ -617,6 +616,12 @@ class ShibaBrain:
                 )
                 # Preserve full content (including <think>) for the UI
                 final_content = response.content
+                
+                # Check for steering messages: if we have some, continue the loop
+                # instead of breaking, so the agent can respond to the injected message
+                if session_key and self._steering_queues.get(session_key):
+                    continue
+                    
                 break
 
         if final_content is None and self.max_iterations > 0 and iteration >= self.max_iterations:
@@ -818,6 +823,7 @@ class ShibaBrain:
                 chat_id,
                 msg.metadata.get("message_id"),
                 session_key=key,
+                model=session.metadata.get("model") or None,
             )
             history = session.get_history(max_messages=0)
             current_role = "assistant" if msg.sender_id == "subagent" else "user"
@@ -909,6 +915,7 @@ class ShibaBrain:
             msg.chat_id,
             msg.metadata.get("message_id"),
             session_key=key,
+            model=session.metadata.get("model") or None,
         )
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
@@ -990,12 +997,16 @@ class ShibaBrain:
 
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.debug("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
+        
+        out_metadata = dict(msg.metadata or {})
+        out_metadata.pop("hidden", None)
+        
         return OutboundMessage(
             channel=msg.channel,
             chat_id=msg.chat_id,
             content=final_content,
             media=media_list,
-            metadata=msg.metadata or {},
+            metadata=out_metadata,
         )
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:

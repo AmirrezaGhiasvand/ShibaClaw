@@ -10,11 +10,14 @@
 - **Timeout Clamping** — Clamped timeouts to `max(0.1, ...)` in `ExecTool` and the execution loop.
 - **Session Saves** — Fixed missing `import os` and implemented atomic `.jsonl.tmp` session saves in `manager.py`.
 - **Initialization Safety** — Added null-checks in subagent provider initialization and timestamp safety in `memory.py`.
+- **Automation Session Duplication** — Fixed an issue where background automations inherited the session context of the chat they were created in, causing duplicate messages and polluted chat histories. `AutomationTool` now executes jobs in an isolated background session by default unless a specific `target_channel` is provided.
+- **Sub-agent Context Exhaustion** — Implemented context truncation and token compression in `SubagentManager` (stripping `<think>` blocks and truncating tool results to 1500 chars) to prevent "Token Window Exceeded" crashes in long-running parallel tasks.
 
 ### Changed
 - **CI Pipeline & Build Environment Hardening** — Configured Windows CI workflow steps to use `shell: bash` to avoid PowerShell bracket/quote parsing issues during multi-extra `pip install` commands, and added pre-flight import checks in `scripts/build_windows.py`.
 
 ### Optimized
+- **Core Loop Processing** — Extracted `KnowledgeManager` initialization and `list_collections` calls out of the asynchronous `_run_agent_loop` (`shibaclaw/agent/loop.py`), drastically reducing redundant I/O operations and background threads per agent step.
 - **FAISS Vectorstore Caching & Locks** — Optimized FAISS vectorstore caching and added Windows file lock fallback (`shibaclaw/agent/knowledge_manager.py`).
 - **O(1) History Append** — Implemented $O(1)$ history append mode in `ScentKeeper` (`shibaclaw/agent/memory.py`).
 - **Config & Skill Caching** — Added Mtime-based config loader and skill summary caching (`shibaclaw/config/loader.py`, `shibaclaw/agent/skills.py`).

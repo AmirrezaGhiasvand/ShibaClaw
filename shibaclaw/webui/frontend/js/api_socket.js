@@ -149,9 +149,16 @@ function initSocket() {
         _finalizeStreamBubble(data.id);
     });
 
+    function _isSameSessionKey(keyA, keyB) {
+        if (!keyA || !keyB) return true;
+        const cleanA = String(keyA).replace(/^webui:/, "").trim();
+        const cleanB = String(keyB).replace(/^webui:/, "").trim();
+        return cleanA === cleanB;
+    }
+
     // ── Streaming response chunks ──
     realtime.on("agent_response_chunk", (data) => {
-        if (data.session_key && data.session_key !== state.sessionId) return;
+        if (data.session_key && !_isSameSessionKey(data.session_key, state.sessionId)) return;
         clearTimeout(state._typingBubbleTimeout);
         hideTypingBubble();
 
@@ -179,7 +186,7 @@ function initSocket() {
     });
 
     realtime.on("agent_response", (data) => {
-        if (data.session_key && data.session_key !== state.sessionId) return;
+        if (data.session_key && !_isSameSessionKey(data.session_key, state.sessionId)) return;
         clearTimeout(state._typingBubbleTimeout);
         hideTypingBubble();
         hideThinking();
@@ -227,7 +234,7 @@ function initSocket() {
     });
 
     realtime.on("error", (data) => {
-        if (data.session_key && data.session_key !== state.sessionId) return;
+        if (data.session_key && !_isSameSessionKey(data.session_key, state.sessionId)) return;
         clearTimeout(state._typingBubbleTimeout);
         hideTypingBubble();
         hideThinking();
@@ -243,10 +250,26 @@ function initSocket() {
     });
 
     realtime.on("message_ack", (data) => {
-        if (data.session_key && data.session_key !== state.sessionId) return;
+        if (data.session_key && !_isSameSessionKey(data.session_key, state.sessionId)) return;
         setWorkingState(true);
         clearTimeout(state._typingBubbleTimeout);
         state._typingBubbleTimeout = setTimeout(() => showTypingBubble(), 150);
+    });
+
+    realtime.on("subagent_status", (data) => {
+        if (data.session_key && !_isSameSessionKey(data.session_key, state.sessionId)) return;
+        const meta = data.metadata || data;
+        const status = meta.status;
+        const taskId = meta.task_id || data.id;
+        const label = meta.label || "Subagent Task";
+
+        if (window.subagentUI) {
+            if (status === "running") {
+                window.subagentUI.startSubagent(taskId, label, "Executing background task...");
+            } else if (status === "completed" || status === "failed") {
+                window.subagentUI.finishSubagent(taskId);
+            }
+        }
     });
 
     realtime.on("session_reset", (data) => {

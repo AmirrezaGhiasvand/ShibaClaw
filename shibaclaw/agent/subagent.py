@@ -14,7 +14,7 @@ from shibaclaw.agent.tools.registry import SkillVault
 from shibaclaw.agent.tools.shell import ExecTool
 from shibaclaw.agent.tools.web import WebFetchTool, WebSearchTool
 from shibaclaw.agent.tools.knowledge import KnowledgeSearchTool
-from shibaclaw.bus.events import InboundMessage
+from shibaclaw.bus.events import InboundMessage, OutboundMessage
 from shibaclaw.bus.queue import MessageBus
 from shibaclaw.config.schema import ExecToolConfig
 from shibaclaw.helpers.helpers import build_assistant_message
@@ -35,6 +35,7 @@ class SubagentManager:
         exec_config: "ExecToolConfig | None" = None,
         restrict_to_workspace: bool = False,
         timeout: int = 600,
+        agent_runner: Any = None,
     ):
         from shibaclaw.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -47,6 +48,7 @@ class SubagentManager:
         self.exec_config = exec_config or ExecToolConfig()
         self.restrict_to_workspace = restrict_to_workspace
         self.timeout = timeout
+        self._agent_runner = agent_runner
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
 
@@ -67,24 +69,63 @@ class SubagentManager:
     async def spawn(
         self,
         task: str,
+        origin_channel: str,
+        origin_chat_id: str,
+        session_key: str,
         label: str | None = None,
-        origin_channel: str = "cli",
-        origin_chat_id: str = "direct",
-        session_key: str | None = None,
+        model: str | None = None,
+        provider: Any | None = None,
     ) -> str:
-        """Spawn a subagent to execute a task in the background."""
-        task_id = str(uuid.uuid4())[:8]
-        display_label = label or task[:30] + ("..." if len(task) > 30 else "")
+        """Spawn a new background subagent and return its task ID."""
+        task_id = f"sub_{uuid.uuid4().hex[:8]}"
+        display_label = label or (task[:30] + "..." if len(task) > 30 else task)
         origin = {
             "channel": origin_channel,
             "chat_id": origin_chat_id,
-            "session_key": session_key or f"{origin_channel}:{origin_chat_id}",
+            "session_key": session_key,
         }
 
-        bg_task = asyncio.create_task(self._run_subagent(task_id, task, display_label, origin))
+        # Keep track of the task
+        bg_task = asyncio.create_task(
+            self._run_subagent(task_id, task, display_label, origin, model, provider)
+        )
         self._running_tasks[task_id] = bg_task
         if session_key:
             self._session_tasks.setdefault(session_key, set()).add(task_id)
+
+        async def _notify_status(status_val: str, content_val: str):
+            if self.bus:
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=origin_channel,
+                        chat_id=origin_chat_id,
+                        content=content_val,
+                        metadata={
+                            "system_event": "subagent_status",
+                            "status": status_val,
+                            "task_id": task_id,
+                            "session_key": origin["session_key"],
+                            "label": display_label,
+                        },
+                    )
+                )
+            try:
+                from shibaclaw.webui.ws_handler import deliver_to_browsers
+
+                await deliver_to_browsers(
+                    origin["session_key"],
+                    content_val,
+                    metadata={
+                        "system_event": "subagent_status",
+                        "status": status_val,
+                        "task_id": task_id,
+                        "session_key": origin["session_key"],
+                        "label": display_label,
+                    },
+                    msg_type="subagent_status",
+                )
+            except Exception as _e:
+                logger.debug("Failed to deliver subagent_status to WebUI: {}", _e)
 
         def _cleanup(_: asyncio.Task) -> None:
             self._running_tasks.pop(task_id, None)
@@ -92,8 +133,14 @@ class SubagentManager:
                 ids.discard(task_id)
                 if not ids:
                     del self._session_tasks[session_key]
+            
+            # Emit UI event for completion
+            asyncio.create_task(_notify_status("completed", f"🤖 Subagent [{display_label}] completed."))
 
         bg_task.add_done_callback(_cleanup)
+
+        # Emit UI event for start
+        asyncio.create_task(_notify_status("running", f"🤖 Subagent [{display_label}] started."))
 
         logger.info("Spawned subagent [{}]: {}", task_id, display_label)
         return f"Subagent [{display_label}] started (id: {task_id}). I'll notify you when it completes."
@@ -106,18 +153,20 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
+        model: str | None = None,
+        provider: Any | None = None,
     ) -> None:
-        """Execute the subagent task and announce the result."""
+        """Run the subagent with a timeout wrapper."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
 
         try:
             if self.timeout > 0:
                 return await asyncio.wait_for(
-                    self._run_subagent_inner(task_id, task, label, origin),
+                    self._run_subagent_inner(task_id, task, label, origin, model, provider),
                     timeout=self.timeout,
                 )
             else:
-                return await self._run_subagent_inner(task_id, task, label, origin)
+                return await self._run_subagent_inner(task_id, task, label, origin, model, provider)
         except asyncio.TimeoutError:
             logger.warning("Subagent [{}] timed out after {}s", task_id, self.timeout)
             await self._announce_result(
@@ -135,9 +184,14 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
+        model: str | None = None,
+        provider: Any | None = None,
     ) -> None:
         """Inner implementation of subagent execution."""
-        if not self.provider:
+        active_provider = provider or self.provider
+        active_model = model or self.model
+
+        if not active_provider:
             await self._announce_result(
                 task_id, label, task, "No AI provider configured.", origin, "error"
             )
@@ -184,10 +238,34 @@ class SubagentManager:
             while iteration < max_iterations:
                 iteration += 1
 
-                response = await self.provider.chat_with_retry(
-                    messages=messages,
+                import re
+                cleaned_messages = []
+                for idx, m in enumerate(messages):
+                    if idx < 2:
+                        cleaned_messages.append(m)
+                        continue
+                    if m.get("role") == "assistant" and isinstance(m.get("content"), str):
+                        cleaned_content = re.sub(r"<think>.*?</think>\n*", "", m["content"], flags=re.DOTALL).strip()
+                        if not cleaned_content and not m.get("tool_calls"):
+                            cleaned_content = "[Reasoning block hidden]"
+                        cleaned_messages.append({**m, "content": cleaned_content})
+                    elif m.get("role") == "tool" and isinstance(m.get("content"), str):
+                        content = m["content"]
+                        # Compress older tool responses heavily (1500 chars)
+                        if idx < len(messages) - 2 and len(content) > 1500:
+                            cleaned_messages.append({
+                                **m,
+                                "content": content[:1500] + "\n...[truncated for context efficiency]..."
+                            })
+                        else:
+                            cleaned_messages.append(m)
+                    else:
+                        cleaned_messages.append(m)
+
+                response = await active_provider.chat_with_retry(
+                    messages=cleaned_messages,
                     tools=tools.get_definitions(),
-                    model=self.model,
+                    model=active_model,
                 )
 
                 if response.has_tool_calls:
@@ -270,7 +348,42 @@ Result:
 
 Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not mention technical details like "subagent" or task IDs."""
 
-        # Inject as system message to trigger main agent
+        # Process result directly via main agent runner if available
+        if self._agent_runner:
+            try:
+                outbound = await self._agent_runner.process_direct(
+                    content=announce_content,
+                    session_key=origin["session_key"],
+                    channel=origin["channel"],
+                    chat_id=origin["chat_id"],
+                    metadata={"hidden": True},
+                )
+                if outbound:
+                    if self.bus:
+                        await self.bus.publish_outbound(outbound)
+                    try:
+                        from shibaclaw.webui.ws_handler import deliver_to_browsers
+
+                        await deliver_to_browsers(
+                            origin["session_key"],
+                            outbound.content,
+                            media=outbound.media,
+                            metadata=outbound.metadata,
+                            msg_type="agent_response",
+                        )
+                    except Exception as _e:
+                        logger.debug("Failed to deliver real-time subagent result to WebUI: {}", _e)
+
+                logger.info(
+                    "Subagent [{}] result successfully processed by main agent for session {}",
+                    task_id,
+                    origin["session_key"],
+                )
+                return
+            except Exception as e:
+                logger.error("Failed to process subagent result via agent runner: {}", e)
+
+        # Fallback: Inject as system message to trigger main agent via bus
         msg = InboundMessage(
             channel=origin["channel"],
             sender_id="subagent",

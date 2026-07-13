@@ -32,6 +32,7 @@ class ProviderSpec:
     detect_by_base_keyword: str = ""
     default_api_base: str = ""
     strip_model_prefix: bool = False
+    preserve_model_prefix: bool = False
     model_overrides: tuple[tuple[str, dict[str, Any]], ...] = ()
     is_oauth: bool = False
     is_direct: bool = False
@@ -84,6 +85,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         detect_by_base_keyword="nvidia",
         default_api_base="https://integrate.api.nvidia.com/v1",
         strip_model_prefix=False,
+        preserve_model_prefix=True,
         model_overrides=(),
     ),
     ProviderSpec(
