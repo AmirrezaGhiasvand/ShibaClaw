@@ -79,6 +79,7 @@ def test_chat_streaming_preserves_provider_specific_tool_call_fields():
             return FakeStream(self._chunks)
 
     thinker = object.__new__(OpenAIThinker)
+    thinker._provider_name = "google_genai"
     thinker.default_model = "gemini-3.1-flash-lite-preview"
     thinker._gateway = None
     thinker._client = SimpleNamespace(

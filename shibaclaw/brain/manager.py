@@ -107,6 +107,7 @@ class PackManager:
         self._cache_persisted_last_consolidated: dict[str, int] = {}
         self._cache_persisted_last_learned: dict[str, int] = {}
         self._cache_persisted_metadata_json: dict[str, str] = {}
+        self._list_sessions_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def _get_session_mtime_ns(self, key: str) -> int | None:
         """Return the current mtime for a session file, if it exists."""
@@ -269,9 +270,18 @@ class PackManager:
     def list_sessions(self) -> list[dict[str, Any]]:
         """List all sessions with metadata."""
         sessions = []
+        new_cache = {}
         for path in self.sessions_dir.glob("*.jsonl"):
             try:
+                path_str = str(path)
                 mtime = path.stat().st_mtime
+
+                cached_data = self._list_sessions_cache.get(path_str)
+                if cached_data and cached_data[0] == mtime:
+                    sessions.append(cached_data[1])
+                    new_cache[path_str] = cached_data
+                    continue
+
                 updated_at = datetime.fromtimestamp(mtime).isoformat()
                 with open(path, encoding="utf-8") as f:
                     first_line = f.readline().strip()
@@ -280,16 +290,18 @@ class PackManager:
                         if data.get("_type") == "metadata":
                             meta = data.get("metadata", {})
                             key = data.get("key") or path.stem.replace("_", ":", 1)
-                            sessions.append(
-                                {
-                                    "key": key,
-                                    "nickname": meta.get("nickname"),
-                                    "profile_id": meta.get("profile_id", "default"),
-                                    "created_at": data.get("created_at"),
-                                    "updated_at": updated_at,
-                                    "path": str(path),
-                                }
-                            )
+                            session_meta = {
+                                "key": key,
+                                "nickname": meta.get("nickname"),
+                                "profile_id": meta.get("profile_id", "default"),
+                                "created_at": data.get("created_at"),
+                                "updated_at": updated_at,
+                                "path": path_str,
+                            }
+                            sessions.append(session_meta)
+                            new_cache[path_str] = (mtime, session_meta)
             except Exception:
                 continue
+
+        self._list_sessions_cache = new_cache
         return sorted(sessions, key=lambda x: x.get("updated_at", ""), reverse=True)
