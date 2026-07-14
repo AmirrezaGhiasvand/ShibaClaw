@@ -18,7 +18,7 @@ _SECRET_KEY_FRAGMENTS = ("token", "password", "secret", "key", "api_key", "apike
 
 def _filter_redacted(data: Any) -> Any:
     if isinstance(data, dict):
-        return {k: _filter_redacted(v) for k, v in data.items() if v != "***"}
+        return {k: _filter_redacted(v) for k, v in data.items() if v != "***" and v != "****"}
     elif isinstance(data, list):
         return [_filter_redacted(item) for item in data]
     return data
