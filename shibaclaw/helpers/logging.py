@@ -124,4 +124,8 @@ def setup_shiba_logging(level: str = "INFO", show_path: bool = False):
     # Intercept standard logging messages and route them to loguru
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
+    # Mute chatty standard loggers that spam INFO/DEBUG messages
+    for noisy_logger in ("httpx", "httpcore", "nio", "telegram", "apscheduler"):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
     return logger
