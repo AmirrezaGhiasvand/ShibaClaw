@@ -219,6 +219,7 @@ class FeishuConfig(Base):
     def resolve_app_secret(self) -> str:
         try:
             from shibaclaw.security.credential_manager import get_credential_manager
+
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "feishu.app_secret")
@@ -231,6 +232,7 @@ class FeishuConfig(Base):
     def resolve_encrypt_key(self) -> str:
         try:
             from shibaclaw.security.credential_manager import get_credential_manager
+
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "feishu.encrypt_key")
@@ -243,6 +245,7 @@ class FeishuConfig(Base):
     def resolve_verification_token(self) -> str:
         try:
             from shibaclaw.security.credential_manager import get_credential_manager
+
             cm = get_credential_manager()
             if cm.is_setup() or cm._store_path.exists():
                 val = cm.get_secret("channels", "feishu.verification_token")
@@ -473,6 +476,11 @@ class FeishuChannel(BaseChannel):
 
     def _build_card_elements(self, content: str) -> list[dict]:
         """Split content into div/markdown + table elements for Feishu card."""
+        if "|" not in content:
+            if content.strip():
+                return self._split_headings(content)
+            return []
+
         elements, last_end = [], 0
         for m in self._TABLE_RE.finditer(content):
             before = content[last_end : m.start()]

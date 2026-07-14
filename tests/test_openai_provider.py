@@ -49,7 +49,9 @@ def test_tool_call_serialization_flattens_extra_fields():
         usage=None,
     )
 
-    serialized = OpenAIThinker._parse_response(thinker, response).tool_calls[0].to_openai_tool_call()
+    serialized = (
+        OpenAIThinker._parse_response(thinker, response).tool_calls[0].to_openai_tool_call()
+    )
 
     assert "provider_specific_fields" not in serialized
     assert "function" in serialized
@@ -81,46 +83,49 @@ def test_chat_streaming_preserves_provider_specific_tool_call_fields():
     thinker = object.__new__(OpenAIThinker)
     thinker._provider_name = "google_genai"
     thinker.default_model = "gemini-3.1-flash-lite-preview"
+    thinker._provider_name = "dummy"
     thinker._gateway = None
     thinker._client = SimpleNamespace(
         chat=SimpleNamespace(
-            completions=FakeCompletions([
-                SimpleNamespace(
-                    choices=[
-                        SimpleNamespace(
-                            finish_reason=None,
-                            delta=SimpleNamespace(
-                                content=None,
-                                reasoning_content=None,
-                                tool_calls=[
-                                    SimpleNamespace(
-                                        index=0,
-                                        id="call_stream_1",
-                                        function=SimpleNamespace(
-                                            name="default_api:list_dir",
-                                            arguments='{"path": "/tmp"}',
-                                            model_extra={"vendor_field": "nested-extra"},
+            completions=FakeCompletions(
+                [
+                    SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                finish_reason=None,
+                                delta=SimpleNamespace(
+                                    content=None,
+                                    reasoning_content=None,
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            index=0,
+                                            id="call_stream_1",
+                                            function=SimpleNamespace(
+                                                name="default_api:list_dir",
+                                                arguments='{"path": "/tmp"}',
+                                                model_extra={"vendor_field": "nested-extra"},
+                                            ),
+                                            model_extra={"thought_signature": "sig-stream"},
                                         ),
-                                        model_extra={"thought_signature": "sig-stream"},
-                                    ),
-                                ],
+                                    ],
+                                ),
                             ),
-                        ),
-                    ],
-                ),
-                SimpleNamespace(
-                    choices=[
-                        SimpleNamespace(
-                            finish_reason="tool_calls",
-                            delta=SimpleNamespace(
-                                content=None,
-                                reasoning_content=None,
-                                tool_calls=None,
+                        ],
+                    ),
+                    SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                finish_reason="tool_calls",
+                                delta=SimpleNamespace(
+                                    content=None,
+                                    reasoning_content=None,
+                                    tool_calls=None,
+                                ),
                             ),
-                        ),
-                    ],
-                ),
-            ]),
+                        ],
+                    ),
+                ]
+            ),
         ),
     )
 
