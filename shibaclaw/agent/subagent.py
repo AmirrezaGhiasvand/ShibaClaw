@@ -366,22 +366,21 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not men
                     outbound.metadata["label"] = label
                     if self.bus:
                         await self.bus.publish_outbound(outbound)
-                    else:
-                        try:
-                            from shibaclaw.cli.gateway_utils import notify_webui_session
+                    try:
+                        from shibaclaw.cli.gateway_utils import notify_webui_session
 
-                            await notify_webui_session(
-                                session_key=origin["session_key"],
-                                response=outbound.content,
-                                auth_token=None,
-                                source="agent",
-                                persist=False,
-                                media=outbound.media,
-                                metadata=outbound.metadata,
-                                msg_type="response",
-                            )
-                        except Exception as _e:
-                            logger.debug("Failed to deliver real-time subagent result to WebUI: {}", _e)
+                        await notify_webui_session(
+                            session_key=origin["session_key"],
+                            response=outbound.content,
+                            auth_token=None,
+                            source="agent",
+                            persist=False,
+                            media=outbound.media,
+                            metadata=outbound.metadata,
+                            msg_type="response",
+                        )
+                    except Exception as _e:
+                        logger.debug("Failed to deliver real-time subagent result to WebUI: {}", _e)
 
                 logger.info(
                     "Subagent [{}] result successfully processed by main agent for session {}",

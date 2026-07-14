@@ -1,5 +1,9 @@
 ## [0.9.7] - 2026-07-13
 
+### Added
+- **Complete Visual Restyling & Brand Refresh** — Comprehensive redesign of all logos and visual identity across the application. Updated all logo assets (16px through 256px, ICO, WebP variants) with a modernized ShibaClaw brand mark. Refreshed WebUI welcome screen, settings panels, chat interface, and profile selectors with cohesive visual language.
+- **Hacker Mode Visual Identity** — New dedicated "Hacker" profile avatar (`ShibHacker.png`) with cyber-shiba aesthetic for the security-focused persona.
+
 ### Fixed
 - **Local RAG Windows EXE Bundling** — Fixed a bug where installing the packaged Windows `.exe` release prevented using the Local RAG & Knowledge Base plugin. Dependencies (`langchain`, `faiss-cpu`, `sentence-transformers`, `pypdf`, `beautifulsoup4`) are now bundled into the release `.exe` via `shibaclaw.spec` hiddenimports and CI pipeline extras.
 - **Real-time Hot-Reload for Local RAG Install & Uninstall** — Refactored `knowledge_manager.py` and `plugins.py` to dynamically verify `langchain`, `langchain_community`, and `faiss` disk specs and purge Python's in-memory `sys.modules` cache upon uninstallation. Both installation and uninstallation of the Local RAG plugin now reflect in the WebUI in real-time without requiring a server restart.
@@ -11,7 +15,7 @@
 - **Session Saves** — Fixed missing `import os` and implemented atomic `.jsonl.tmp` session saves in `manager.py`.
 - **Initialization Safety** — Added null-checks in subagent provider initialization and timestamp safety in `memory.py`.
 - **Automation Session Duplication** — Fixed an issue where background automations inherited the session context of the chat they were created in, causing duplicate messages and polluted chat histories. `AutomationTool` now executes jobs in an isolated background session by default unless a specific `target_channel` is provided.
-- **Sub-agent Context Exhaustion** — Implemented context truncation and token compression in `SubagentManager` (stripping `<think>` blocks and truncating tool results to 1500 chars) to prevent "Token Window Exceeded" crashes in long-running parallel tasks.
+- **Sub-agent Context Exhaustion** — Implemented context truncation and token compression in `SubagentManager` (stripping `think` blocks and truncating tool results to 1500 chars) to prevent "Token Window Exceeded" crashes in long-running parallel tasks.
 
 ### Changed
 - **CI Pipeline & Build Environment Hardening** — Configured Windows CI workflow steps to use `shell: bash` to avoid PowerShell bracket/quote parsing issues during multi-extra `pip install` commands, and added pre-flight import checks in `scripts/build_windows.py`.
@@ -20,7 +24,6 @@
 - **Core Loop Processing** — Extracted `KnowledgeManager` initialization and `list_collections` calls out of the asynchronous `_run_agent_loop` (`shibaclaw/agent/loop.py`), drastically reducing redundant I/O operations and background threads per agent step.
 - **FAISS Vectorstore Caching & Locks** — Optimized FAISS vectorstore caching and added Windows file lock fallback (`shibaclaw/agent/knowledge_manager.py`).
 - **O(1) History Append** — Implemented $O(1)$ history append mode in `ScentKeeper` (`shibaclaw/agent/memory.py`).
-- **Config & Skill Caching** — Added Mtime-based config loader and skill summary caching (`shibaclaw/config/loader.py`, `shibaclaw/agent/skills.py`).
 
 ## [0.9.6] - 2026-07-12
 
