@@ -364,6 +364,8 @@ async def _start_gateway_client() -> None:
 
 
 async def run_server(port: int = 3000, host: str = "127.0.0.1", config=None, provider=None):
+    notify_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    os.environ["SHIBACLAW_WEBUI_NOTIFY_URL"] = f"http://{notify_host}:{port}"
     app = create_app(config=config, provider=provider, port=port, host=host)
     if host in ("0.0.0.0", "::") and not os.environ.get("SHIBACLAW_CORS_ORIGINS", "").strip():
         logger.warning("Binding to {} — set SHIBACLAW_CORS_ORIGINS for non-loopback clients", host)

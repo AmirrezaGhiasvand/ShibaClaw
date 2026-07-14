@@ -198,12 +198,14 @@ function initSocket() {
         _cancelScheduledStreamRender(mid);
         if (streamBubble) {
             // Clean up stream buffer
+            const accumulated = state._streamBuffers ? state._streamBuffers[mid] : null;
             if (state._streamBuffers) delete state._streamBuffers[mid];
-            // Re-render with final content (which may include <think> stripping, etc.)
-            if (data.content) {
-                streamBubble.innerHTML = renderMarkdown(data.content);
+            // Re-render with final content for this bubble
+            const finalContent = accumulated || data.content;
+            if (finalContent) {
+                streamBubble.innerHTML = renderMarkdown(finalContent);
                 enhanceCodeBlocks(streamBubble);
-                try { streamBubble.setAttribute('data-raw-content', data.content || ''); } catch (e) { }
+                try { streamBubble.setAttribute('data-raw-content', finalContent || ''); } catch (e) { }
             }
             streamBubble.removeAttribute("id"); // Remove stream id marker
 

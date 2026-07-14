@@ -786,7 +786,7 @@ function _renderSessionHistory(parsedMessages, parsedGroups, fragment, loadSeq, 
         if (!_isCurrentSessionLoad(loadSeq, sessionId)) return;
         
         // Render any pending process groups for this turn
-        while (currentGroupIdx < parsedGroups.length && parsedGroups[currentGroupIdx].turnId <= item.turnId) {
+        while (currentGroupIdx < parsedGroups.length && (item.type === "user" ? parsedGroups[currentGroupIdx].turnId < item.turnId : parsedGroups[currentGroupIdx].turnId <= item.turnId)) {
             const pg = parsedGroups[currentGroupIdx];
             renderProcessGroupFromHistory(pg.turnId, pg.steps, fragment);
             currentGroupIdx++;

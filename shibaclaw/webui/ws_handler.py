@@ -443,6 +443,8 @@ async def _handle_user_message(ws_id: str, ws: WebSocket, data: dict[str, Any]) 
 
             async for event in gateway_client.chat_stream(payload, request_id=message["id"]):
                 if event.get("t") == "p":
+                    if event.get("h"):
+                        response_content = ""  # Reset accumulated text so post-tool response doesn't duplicate pre-tool text
                     event_type = "tool" if event.get("h") else "thinking"
                     evt = {
                         "type": event_type,
