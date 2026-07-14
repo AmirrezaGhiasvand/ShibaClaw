@@ -69,8 +69,6 @@ async def gateway_command(
     from .commands import _load_runtime_config, _make_provider
 
     setup_shiba_logging(level="DEBUG" if verbose else "INFO")
-    if verbose:
-        logging.basicConfig(level=logging.DEBUG)
 
     config = _load_runtime_config(config_path, workspace)
     port = port_override if port_override is not None else config.gateway.port
