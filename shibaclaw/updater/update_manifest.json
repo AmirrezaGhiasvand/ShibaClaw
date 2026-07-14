@@ -1,6 +1,6 @@
 {
-    "version": "0.9.6",
-    "release_notes": "Added a WebUI login troubleshooting warning advising users experiencing post-update login issues to run 'shibaclaw reset-admin' to restore access. Version bumped all components to v0.9.6.",
+    "version": "0.9.7",
+    "release_notes": "Complete Visual Restyling & Brand Refresh — Comprehensive redesign of all logos and visual identity across the application. Updated all logo assets (16px through 256px, ICO, WebP variants) with a modernized ShibaClaw brand mark. Refreshed WebUI welcome screen, settings panels, chat interface, and profile selectors with cohesive visual language. Hacker Mode Visual Identity — New dedicated 'Hacker' profile avatar (ShibHacker.png) with cyber-shiba aesthetic for the security-focused persona. Fixed Local RAG Windows EXE Bundling, Real-time Hot-Reload for Local RAG Install & Uninstall, Clean RAG Dependency Uninstallation, Memory Leaks, Concurrency Locks, MCP Deadlocks, Timeout Clamping, Session Saves, Initialization Safety, Automation Session Duplication, Sub-agent Context Exhaustion. CI Pipeline & Build Environment Hardening. Core Loop Processing, FAISS Vectorstore Caching & Locks, O(1) History Append optimizations.",
     "changes": [
         {
             "path": "pyproject.toml",

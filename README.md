@@ -34,28 +34,32 @@
 > If you experience login issues with the WebUI post v0.9.5 update, please run `shibaclaw reset-admin` in your terminal/console to restore access.
 
 <details open>
-<summary>📢 <b>Latest Release: v0.9.6</b> — Click to see what's new</summary>
+<summary>📢 <b>Latest Release: v0.9.7</b> — Click to see what's new</summary>
 
 ### Added
-- **🔐 Encrypted Credentials Vault (Major Security Update)** — We have fundamentally overhauled secret management. ShibaClaw now utilizes a robust AES-128/256 symmetric encrypted vault (`credentials.enc` and `credentials.key`) via Fernet. This entirely isolates all third-party integration secrets (API keys, bot tokens, email passwords) from plaintext config files, preventing accidental leaks.
-- **🌐 Native xAI & Advanced OAuth Flows** — Integrated real, native OAuth / Device Code flows directly into the WebUI. You can now authenticate seamlessly with **xAI / Grok** using official device code mechanisms, alongside GitHub Copilot, OpenAI Codex, and OpenRouter, completely removing the need to touch API keys manually.
-- **🤖 Expanded Model Providers Ecosystem** — Added full, out-of-the-box support for the industry's leading models including **Anthropic (Claude)**, **xAI (Grok)**, **Qwen (Alibaba)**, **MiniMax**, and **Zhipu Z.AI**.
-- **Windows File Protection** — Integrated platform-specific fallback using `icacls` to enforce strict user-only access control on keys and vaults under Windows.
-
-### Changed
-- **🎨 Complete WebUI Visual Redesign** — Overhauled the entire user interface to establish a serious, professional, and product-focused aesthetic (inspired by Linear and Stripe). Systematically removed AI-generated "visual slop" including glassmorphism backgrounds (`backdrop-filter: blur`), decorative gradient text, excessive gold glows, and float animations. Replaced arbitrary side-stripe borders with clean, semantic background tints, unified the border-radius system under a strict token scale (4px/8px/12px), and optimized color contrast across dark themes to meet WCAG standards.
+- **🎨 Complete Visual Restyling & Brand Refresh** — Comprehensive redesign of all logos and visual identity across the application. Updated all logo assets (16px through 256px, ICO, WebP variants) with a modernized ShibaClaw brand mark. Refreshed WebUI welcome screen, settings panels, chat interface, and profile selectors with cohesive visual language.
+- **🐕 Hacker Mode Visual Identity** — New dedicated "Hacker" profile avatar (`ShibHacker.png`) with cyber-shiba aesthetic for the security-focused persona.
 
 ### Fixed
-- **Insecure Plaintext Fallbacks** — Refactored WebUI onboarding and Github OAuth settings flow to store retrieved tokens directly in the encrypted vault rather than failing to validate them against schema changes.
-- **Race Conditions in Vault Updates** — Wrapped all modifying credential operations under a `threading.Lock` to guarantee safety during concurrent WebUI updates.
-- **Silent Corruption Data Loss** — Configured the vault loading flow to raise a `RuntimeError` on decrypt failures rather than returning an empty database which would accidentally overwrite existing secrets.
-- **Path-Aware Cryptography Caches** — Replaced global single-key Fernet cache with a path-specific map to prevent key reuse conflicts in script environments.
-- **Complete Channel Vault-First Hardening** — Integrated and verified vault resolution helpers for DingTalk, Feishu, QQ, MoChat, Discord, and the WhatsApp channel plugin.
-- **Connected Apps Seamless Configuration** — Fixed a UX bug where saving the Klavis API Key for the first time required manually closing and reopening the menu. The WebUI now automatically refreshes the App states and enables the Connect buttons immediately without a reload.
-- **Python Codebase Linting** — Addressed `Ruff` static analysis errors including unrolling multi-line statements and cleaning up unused imports and undefined variables across core modules (`channel.py`, `utils.py`, `gateway.py`).
+- **Local RAG Windows EXE Bundling** — Fixed a bug where installing the packaged Windows `.exe` release prevented using the Local RAG & Knowledge Base plugin. Dependencies (`langchain`, `faiss-cpu`, `sentence-transformers`, `pypdf`, `beautifulsoup4`) are now bundled into the release `.exe` via `shibaclaw.spec` hiddenimports and CI pipeline extras.
+- **Real-time Hot-Reload for Local RAG Install & Uninstall** — Refactored `knowledge_manager.py` and `plugins.py` to dynamically verify `langchain`, `langchain_community`, and `faiss` disk specs and purge Python's in-memory `sys.modules` cache upon uninstallation. Both installation and uninstallation of the Local RAG plugin now reflect in the WebUI in real-time without requiring a server restart.
+- **Clean RAG Dependency Uninstallation** — Explicitly included `langchain-core` and `langchain-text-splitters` in the plugin uninstallation pipeline so no residual sub-dependencies remain in `site-packages`.
+- **Memory Leaks** — Fixed memory leaks in WebSocket handlers and message queues (`shibaclaw/agent/context.py`, `loop.py`).
+- **Concurrency Locks** — Implemented strong reference lock storage in `PackMemory` & `ShibaBrain` to prevent concurrency race conditions.
+- **MCP Deadlocks** — Resolved reconnect deadlock in `MCPManager`.
+- **Timeout Clamping** — Clamped timeouts to `max(0.1, ...)` in `ExecTool` and the execution loop.
+- **Session Saves** — Fixed missing `import os` and implemented atomic `.jsonl.tmp` session saves in `manager.py`.
+- **Initialization Safety** — Added null-checks in subagent provider initialization and timestamp safety in `memory.py`.
+- **Automation Session Duplication** — Fixed an issue where background automations inherited the session context of the chat they were created in, causing duplicate messages and polluted chat histories. `AutomationTool` now executes jobs in an isolated background session by default unless a specific `target_channel` is provided.
+- **Sub-agent Context Exhaustion** — Implemented context truncation and token compression in `SubagentManager` (stripping `think` blocks and truncating tool results to 1500 chars) to prevent "Token Window Exceeded" crashes in long-running parallel tasks.
+
+### Changed
+- **CI Pipeline & Build Environment Hardening** — Configured Windows CI workflow steps to use `shell: bash` to avoid PowerShell bracket/quote parsing issues during multi-extra `pip install` commands, and added pre-flight import checks in `scripts/build_windows.py`.
 
 ### Optimized
-- **WebUI Loading & WebSocket Initialization** — Migrated WebUI frontend assets to use `esbuild` for bundling and minification. The modular ES6 architecture is now compiled into a single `bundle.js` and `index.css`, drastically reducing HTTP request overhead and fixing race conditions in WebSocket connection initialization loops.
+- **Core Loop Processing** — Extracted `KnowledgeManager` initialization and `list_collections` calls out of the asynchronous `_run_agent_loop` (`shibaclaw/agent/loop.py`), drastically reducing redundant I/O operations and background threads per agent step.
+- **FAISS Vectorstore Caching & Locks** — Optimized FAISS vectorstore caching and added Windows file lock fallback (`shibaclaw/agent/knowledge_manager.py`).
+- **O(1) History Append** — Implemented $O(1)$ history append mode in `ScentKeeper` (`shibaclaw/agent/memory.py`).
 
 See the [Changelog](./CHANGELOG.md) for full release history.
 
