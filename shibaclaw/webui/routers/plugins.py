@@ -252,14 +252,32 @@ async def _install_plugin_source(package: str) -> JSONResponse:
 
     logger.info("Installing plugin: {}", " ".join(cmd))
 
-    try:
+    async def _run_pip(cmd_list):
         proc = await asyncio.create_subprocess_exec(
-            *cmd,
+            *cmd_list,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             **extra_kwargs
         )
         stdout, stderr = await proc.communicate()
+        if proc.returncode != 0 and b"externally-managed-environment" in stderr:
+            logger.info("Detected externally-managed-environment, retrying with --break-system-packages")
+            # inject --break-system-packages after install
+            new_cmd = cmd_list.copy()
+            if "install" in new_cmd:
+                idx = new_cmd.index("install")
+                new_cmd.insert(idx + 1, "--break-system-packages")
+            proc = await asyncio.create_subprocess_exec(
+                *new_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                **extra_kwargs
+            )
+            stdout, stderr = await proc.communicate()
+        return proc, stdout, stderr
+
+    try:
+        proc, stdout, stderr = await _run_pip(cmd)
         
         if proc.returncode != 0:
             if tag != "main":
@@ -270,13 +288,7 @@ async def _install_plugin_source(package: str) -> JSONResponse:
                     install_target = f"git+https://github.com/RikyZ90/ShibaClaw.git@main#subdirectory=plugins/{package}"
                 cmd[-1] = install_target
                 logger.info("Retrying pip install: {}", " ".join(cmd))
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    **extra_kwargs
-                )
-                stdout, stderr = await proc.communicate()
+                proc, stdout, stderr = await _run_pip(cmd)
 
             if proc.returncode != 0:
                 return JSONResponse({
@@ -411,6 +423,20 @@ async def api_uninstall_plugin(request: Request) -> JSONResponse:
         )
         stdout, stderr = await proc.communicate()
         
+        if proc.returncode != 0 and b"externally-managed-environment" in stderr:
+            logger.info("Detected externally-managed-environment during uninstall, retrying with --break-system-packages")
+            new_cmd = cmd.copy()
+            if "uninstall" in new_cmd:
+                idx = new_cmd.index("uninstall")
+                new_cmd.insert(idx + 1, "--break-system-packages")
+            proc = await asyncio.create_subprocess_exec(
+                *new_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                **extra_kwargs
+            )
+            stdout, stderr = await proc.communicate()
+
         if proc.returncode != 0:
             return JSONResponse({
                 "ok": False,

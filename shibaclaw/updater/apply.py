@@ -73,6 +73,23 @@ def _pip_upgrade(version: str | None) -> dict[str, Any]:
             timeout=600,
             check=False,
         )
+
+        if result.returncode != 0 and "externally-managed-environment" in result.stderr:
+            logger.info("Detected externally-managed-environment during upgrade, retrying with --break-system-packages")
+            new_cmd = cmd.copy()
+            if "install" in new_cmd:
+                idx = new_cmd.index("install")
+                new_cmd.insert(idx + 1, "--break-system-packages")
+
+            result = subprocess.run(
+                new_cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                check=False,
+            )
+            cmd = new_cmd
+
     except Exception as exc:
         return {"ok": False, "output": str(exc), "command": " ".join(cmd)}
 
