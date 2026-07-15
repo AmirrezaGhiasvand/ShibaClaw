@@ -1,3 +1,4 @@
+import os
 import sys
 import asyncio
 import re
@@ -16,7 +17,7 @@ from loguru import logger
 from shibaclaw.integrations.registry import discover_plugins, discover_local_plugins
 from shibaclaw.tts.registry import discover_tts_plugins
 from shibaclaw.config.loader import load_config
-from shibaclaw.config.paths import get_plugins_dir
+from shibaclaw.config.paths import get_app_root, get_plugins_dir
 from shibaclaw.helpers.system import is_running_as_exe
 from shibaclaw import __version__
 from shibaclaw.agent.knowledge_manager import is_rag_available
@@ -225,6 +226,13 @@ async def _install_plugin_source(package: str) -> JSONResponse:
     extra_kwargs = {}
     if sys.platform == "win32":
         extra_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    else:
+        # Prevent pip from filling up small /tmp tmpfs mounts during large clones
+        custom_tmp = get_app_root() / "tmp"
+        custom_tmp.mkdir(parents=True, exist_ok=True)
+        env = os.environ.copy()
+        env["TMPDIR"] = str(custom_tmp)
+        extra_kwargs["env"] = env
 
     if package == "shibaclaw-rag":
         is_source = (workspace_root / "pyproject.toml").exists()
