@@ -116,14 +116,18 @@ class SubagentManager:
                 ids.discard(task_id)
                 if not ids:
                     del self._session_tasks[session_key]
-            
+
             # Emit UI event for completion
-            asyncio.create_task(_notify_status("completed", f"\U0001f916 Subagent [{display_label}] completed."))
+            asyncio.create_task(
+                _notify_status("completed", f"\U0001f916 Subagent [{display_label}] completed.")
+            )
 
         bg_task.add_done_callback(_cleanup)
 
         # Emit UI event for start
-        asyncio.create_task(_notify_status("running", f"\U0001f916 Subagent [{display_label}] started."))
+        asyncio.create_task(
+            _notify_status("running", f"\U0001f916 Subagent [{display_label}] started.")
+        )
 
         logger.info("Spawned subagent [{}]: {}", task_id, display_label)
         return f"Subagent [{display_label}] started (id: {task_id}). I'll notify you when it completes."
@@ -222,13 +226,16 @@ class SubagentManager:
                 iteration += 1
 
                 import re
+
                 cleaned_messages = []
                 for idx, m in enumerate(messages):
                     if idx < 2:
                         cleaned_messages.append(m)
                         continue
                     if m.get("role") == "assistant" and isinstance(m.get("content"), str):
-                        cleaned_content = re.sub(r"<think>.*?</think>\n*", "", m["content"], flags=re.DOTALL).strip()
+                        cleaned_content = re.sub(
+                            r"<think>.*?</think>\n*", "", m["content"], flags=re.DOTALL
+                        ).strip()
                         if not cleaned_content and not m.get("tool_calls"):
                             cleaned_content = "[Reasoning block hidden]"
                         cleaned_messages.append({**m, "content": cleaned_content})
@@ -236,10 +243,13 @@ class SubagentManager:
                         content = m["content"]
                         # Compress older tool responses heavily (1500 chars)
                         if idx < len(messages) - 2 and len(content) > 1500:
-                            cleaned_messages.append({
-                                **m,
-                                "content": content[:1500] + "\n...[truncated for context efficiency]..."
-                            })
+                            cleaned_messages.append(
+                                {
+                                    **m,
+                                    "content": content[:1500]
+                                    + "\n...[truncated for context efficiency]...",
+                                }
+                            )
                         else:
                             cleaned_messages.append(m)
                     else:
@@ -291,7 +301,9 @@ class SubagentManager:
                     if response.finish_reason == "error":
                         error_msg = response.content or "Unknown LLM error"
                         logger.error("Subagent [{}] LLM returned error: {}", task_id, error_msg)
-                        await self._announce_result(task_id, label, task, error_msg, origin, "error")
+                        await self._announce_result(
+                            task_id, label, task, error_msg, origin, "error"
+                        )
                         return
 
                     final_result = response.content
@@ -299,8 +311,19 @@ class SubagentManager:
 
             if final_result is None:
                 # If we hit max iterations or loop broke without content, use the last assistant message
-                last_msg = next((m for m in reversed(messages) if m["role"] == "assistant" and m.get("content")), None)
-                final_result = last_msg["content"] if last_msg else "Task completed but no final response was generated (max iterations reached)."
+                last_msg = next(
+                    (
+                        m
+                        for m in reversed(messages)
+                        if m["role"] == "assistant" and m.get("content")
+                    ),
+                    None,
+                )
+                final_result = (
+                    last_msg["content"]
+                    if last_msg
+                    else "Task completed but no final response was generated (max iterations reached)."
+                )
 
             logger.info("Subagent [{}] completed successfully", task_id)
             await self._announce_result(task_id, label, task, final_result, origin, "ok")
@@ -344,6 +367,7 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not men
                 if outbound:
                     outbound.metadata["task_id"] = task_id
                     outbound.metadata["label"] = label
+                    outbound.metadata["session_key"] = origin["session_key"]
                     if self.bus:
                         await self.bus.publish_outbound(outbound)
 
