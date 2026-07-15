@@ -237,6 +237,7 @@ shibaclaw web --with-gateway
 </p>
 
 </div>
+
 ---
 
 
@@ -973,40 +974,89 @@ github.com/RikyZ90/ShibaClaw/releases/latest
 
 ---
 
-<div dir="rtl">
+<div dir="rtl" align="right" style="direction: rtl; text-align: right;">
 
 <h2>🧠 سیستم حافظه پیشرفته سه‌سطحی</h2>
 
 <p>
-حافظه ShibaClaw فقط یک بافر ساده برای پیام‌های Chat نیست؛ بلکه یک سیستم ساختاریافته و هوشمند است که برای حفظ تداوم پروژه‌ها و کارهای بلندمدت طراحی شده است.
+حافظه ShibaClaw فقط یک بافر ساده برای پیام‌های
+<span dir="ltr">Chat</span>
+نیست؛ بلکه یک سیستم ساختاریافته و هوشمند است که برای حفظ تداوم پروژه‌ها و کارهای بلندمدت طراحی شده است.
 </p>
 
-<div dir="rtl" align="right">
+<div dir="rtl" align="right" style="direction: rtl; text-align: right;">
 
-<ul>
-<li><strong><code>USER.md</code> (هویت و ترجیحات)</strong> — اطلاعات ماندگار کاربر، سبک گفتگو و زبان ترجیحی را ذخیره می‌کند تا Agent بداند <em>شما چه کسی هستید.</em></li>
+<ul dir="rtl" style="direction: rtl; text-align: right; list-style-position: inside;">
 
-<li><strong><code>MEMORY.md</code> (وضعیت عملیاتی)</strong> — دانش کاری Agent؛ شامل اطلاعات محیط، موجودیت‌های تکرارشونده و وضعیت پروژه.</li>
+<li dir="rtl">
+<strong><code dir="ltr">USER.md</code> (هویت و ترجیحات)</strong> —
+اطلاعات ماندگار کاربر، سبک گفتگو و زبان ترجیحی را ذخیره می‌کند تا
+<span dir="ltr">Agent</span>
+بداند
+<em>شما چه کسی هستید.</em>
+</li>
 
-<li><strong><code>HISTORY.md</code> (آرشیو Sessionها)</strong> — آرشیوی قابل جستجو از تمام Sessionهای گذشته همراه با خلاصه‌های زمان‌بندی‌شده و برچسب‌گذاری‌شده.</li>
+<li dir="rtl">
+<strong><code dir="ltr">MEMORY.md</code> (وضعیت عملیاتی)</strong> —
+دانش کاری
+<span dir="ltr">Agent</span>؛
+شامل اطلاعات محیط، موجودیت‌های تکرارشونده و وضعیت پروژه.
+</li>
+
+<li dir="rtl">
+<strong><code dir="ltr">HISTORY.md</code> (آرشیو Sessionها)</strong> —
+آرشیوی قابل جستجو از تمام
+<span dir="ltr">Session</span>
+های گذشته همراه با خلاصه‌های زمان‌بندی‌شده و برچسب‌گذاری‌شده.
+</li>
+
 </ul>
 
 </div>
 
 <p>
-به‌جای اینکه هزاران پیام داخل System Prompt انباشته شوند، ShibaClaw از یک چرخه <strong>Proactive Learning</strong> استفاده می‌کند. هر چند پیام یک‌بار، یک فرآیند LLM در پس‌زمینه، بدون ایجاد وقفه در گفتگو، اطلاعات ماندگار جدید را استخراج کرده و فایل‌های <code>USER.md</code> و <code>MEMORY.md</code> را به‌روزرسانی می‌کند.
+به‌جای اینکه هزاران پیام داخل
+<span dir="ltr">System Prompt</span>
+انباشته شوند، ShibaClaw از یک چرخه
+<strong><span dir="ltr">Proactive Learning</span></strong>
+استفاده می‌کند.
+هر چند پیام یک‌بار، یک فرآیند
+<span dir="ltr">LLM</span>
+در پس‌زمینه، بدون ایجاد وقفه در گفتگو، اطلاعات ماندگار جدید را استخراج کرده و فایل‌های
+<code dir="ltr">USER.md</code>
+و
+<code dir="ltr">MEMORY.md</code>
+را به‌روزرسانی می‌کند.
 </p>
 
 <p>
-اگر <code>MEMORY.md</code> بیش از حد بزرگ شود، مکانیزم <strong>Auto-Compaction</strong> به‌صورت خودکار اطلاعات را خلاصه و موارد تکراری را حذف می‌کند تا وضعیت‌های جدید در اولویت قرار بگیرند و مصرف Token همیشه در محدوده تعیین‌شده باقی بماند.
+اگر
+<code dir="ltr">MEMORY.md</code>
+بیش از حد بزرگ شود، مکانیزم
+<strong><span dir="ltr">Auto-Compaction</span></strong>
+به‌صورت خودکار اطلاعات را خلاصه و موارد تکراری را حذف می‌کند تا وضعیت‌های جدید در اولویت قرار بگیرند و مصرف
+<span dir="ltr">Token</span>
+همیشه در محدوده تعیین‌شده باقی بماند.
 </p>
 
 <p>
-هر زمان Agent به اطلاعات قدیمی‌تر نیاز داشته باشد، می‌تواند به‌صورت خودکار فایل <code>HISTORY.md</code> را با استفاده از الگوریتم‌های <strong>TF-IDF</strong> و امتیازدهی براساس تازگی (Recency Scoring) جستجو کند.
+هر زمان
+<span dir="ltr">Agent</span>
+به اطلاعات قدیمی‌تر نیاز داشته باشد، می‌تواند به‌صورت خودکار فایل
+<code dir="ltr">HISTORY.md</code>
+را با استفاده از الگوریتم‌های
+<strong><span dir="ltr">TF-IDF</span></strong>
+و امتیازدهی براساس تازگی
+<span dir="ltr">(Recency Scoring)</span>
+جستجو کند.
 </p>
 
 <p>
-این تفکیک بین هویت، حافظه عملیاتی و تاریخچه باعث می‌شود Agent همیشه روی وضعیت فعلی پروژه متمرکز بماند، بدون اینکه با محدودیت Token روبه‌رو شود یا تمرکز خود را از دست بدهد.
+این تفکیک بین هویت، حافظه عملیاتی و تاریخچه باعث می‌شود
+<span dir="ltr">Agent</span>
+همیشه روی وضعیت فعلی پروژه متمرکز بماند، بدون اینکه با محدودیت
+<span dir="ltr">Token</span>
+روبه‌رو شود یا تمرکز خود را از دست بدهد.
 </p>
 
 </div>
