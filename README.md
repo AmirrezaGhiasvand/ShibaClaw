@@ -25,8 +25,8 @@
   <a href="./README.pt-BR.md">Português (BR)</a> &nbsp;·&nbsp;
   <a href="./README.ja.md">日本語</a> &nbsp;·&nbsp;
   <a href="./README.de.md">Deutsch</a> &nbsp;·&nbsp;
-  <a href="./README.fr.md">Français</a>
-  <a href="./README.fش.md">فارسی</a>
+  <a href="./README.fr.md">Français</a>&nbsp;·&nbsp;
+  <a href="./README.fa.md">فارسی</a>
 </p>
 
 ---
